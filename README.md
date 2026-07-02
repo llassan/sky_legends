@@ -1,5 +1,7 @@
 # Sky Legends
 
+[![View on GitHub](https://img.shields.io/badge/GitHub-llassan%2Fsky__legends-181717?logo=github)](https://github.com/llassan/sky_legends)
+
 A premium-feel vertical scrolling shoot-'em-up (SHMUP) for Android, built in **pure Kotlin +
 Canvas** (no game engine), in the same lineage as *Iron Fury*. It ships an 8-sector campaign,
 3 unlockable aircraft with special abilities, a coin-spend upgrade lab, and fully procedural
