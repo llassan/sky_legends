@@ -7,6 +7,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
+import com.skylegends.game.utils.Constants
 
 class MainActivity : AppCompatActivity() {
 
@@ -15,6 +16,11 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Match the virtual canvas's aspect ratio to the real screen *before* GameView (and
+        // everything it constructs — Hud, UiLayout, Background) reads Constants.GAME_HEIGHT,
+        // so the play field fills the whole screen instead of letterboxing to a fixed 9:16.
+        val metrics = resources.displayMetrics
+        Constants.GAME_HEIGHT = Constants.GAME_WIDTH * (metrics.heightPixels.toFloat() / metrics.widthPixels.toFloat())
         gameView = GameView(this)
         setContentView(gameView)
         setupFullscreen()

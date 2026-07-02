@@ -3,14 +3,17 @@ package com.skylegends.game.utils
 /**
  * Global tuning for Sky Legends.
  *
- * The game is rendered at a fixed *virtual* portrait resolution and letterbox-scaled
- * to the physical screen (see [com.skylegends.game.GameView]). All gameplay math is in
- * virtual units, so behaviour is identical on every device.
+ * The game is rendered at a fixed virtual *width*; height adapts to the device's real
+ * aspect ratio (see [com.skylegends.game.MainActivity], which sets [GAME_HEIGHT] once at
+ * startup before anything else is constructed) so the play field fills the whole screen —
+ * taller devices simply get more vertical play space — instead of letterboxing to a fixed
+ * 9:16 canvas. All gameplay math is in virtual units, so behaviour is still resolution-
+ * independent; only the *amount* of vertical world varies.
  */
 object Constants {
-    // Virtual resolution (portrait, 9:16). Everything is authored against this.
     const val GAME_WIDTH = 540f
-    const val GAME_HEIGHT = 960f
+    /** Set once from the real screen aspect ratio before [GameView] is constructed. */
+    var GAME_HEIGHT = 960f
 
     // Timing — fixed timestep.
     const val TARGET_FPS = 60
