@@ -16,13 +16,14 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * A deep-space backdrop: a rich multi-stop sky gradient, a dense faint dust field, three
- * twinkling star layers with real color-temperature variation, a handful of glowing "hero"
- * stars with sparkle flares, drifting multi-blob nebula clouds rendered with screen-blended
- * radial gradients, two shaded planets (one ringed), and rare shooting stars. Every element
- * wraps as it scrolls, so it runs forever with a fixed memory footprint. Each visual layer
- * owns a dedicated [Paint] — nothing is shared across layers, so a config change on one
- * (blend mode, mask filter, shader) can never leak into another.
+ * A deep-space backdrop, re-skinned per campaign sector via [SpaceTheme] so the scene visibly
+ * evolves as the player advances — [configure] is called once at the start of every sector,
+ * rebuilding the sky gradient, nebula/planet palettes, star visibility, and ambient particle
+ * style ([DustMode]) for that sector's mood. The rendering engine underneath (twinkling
+ * layered stars, glow-flare hero stars, screen-blended nebula clouds, shaded planets, rare
+ * shooting stars) stays the same; only the theme data changes. Each visual layer owns a
+ * dedicated [Paint] — nothing is shared across layers, so a config change on one (blend mode,
+ * mask filter, shader) can never leak into another.
  */
 class Background {
 
@@ -44,8 +45,9 @@ class Background {
 
     private class ShootingStar(var x: Float, var y: Float, val vx: Float, val vy: Float, var life: Float, val maxLife: Float)
 
-    private val rnd = Random(20260701)
+    private var rnd = Random(20260701)
     private var time = 0f
+    private var theme = SpaceThemeCatalog.forSector(0)
 
     private val stars = ArrayList<Star>()
     private val heroStars = ArrayList<HeroStar>()
@@ -54,16 +56,18 @@ class Background {
     private val shootingStars = ArrayList<ShootingStar>()
     private var shootingStarTimer = 6f
 
-    // Dense faint dust field, drawn in one batched drawPoints() call for near-zero cost.
+    // Dense ambient particle field, drawn in one batched call. Position storage is reused
+    // across themes; only color/motion/render style change with [DustMode].
     private val dustCount = 220
     private val dustPts = FloatArray(dustCount * 2)
-    private val dustSpeed = 18f
+    private val rainLines = FloatArray(dustCount * 4)
+
+    private var lightningTimer = 8f
+    private var lightningFlash = 0f
 
     // Dedicated paints per layer — never shared, never leaked (see [[feedback_play_before_claiming_verified]]).
     private val skyPaint = Paint()
-    private val dustPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(70, 200, 210, 255); strokeWidth = 2.4f; strokeCap = Paint.Cap.ROUND
-    }
+    private val dustPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
     private val starPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val heroGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         maskFilter = BlurMaskFilter(14f, BlurMaskFilter.Blur.NORMAL)
@@ -76,16 +80,39 @@ class Background {
     private val planetPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val shootPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val flashPaint = Paint()
 
     init {
-        buildSky()
+        configure(0)
+    }
+
+    /** Re-skin the whole backdrop for campaign sector [tier] (0-based). Called once per run start. */
+    fun configure(tier: Int) {
+        theme = SpaceThemeCatalog.forSector(tier)
+        rnd = Random(20260701L.toInt() + tier * 7919)
+        time = 0f
+        shootingStars.clear()
+        shootingStarTimer = 4f + rnd.nextFloat() * 4f
+        lightningTimer = 6f + rnd.nextFloat() * 6f
+        lightningFlash = 0f
+
+        skyPaint.shader = LinearGradient(
+            0f, 0f, 0f, Constants.GAME_HEIGHT,
+            theme.sky, floatArrayOf(0f, 0.28f, 0.5f, 0.72f, 1f), Shader.TileMode.CLAMP
+        )
+
         repeat(dustCount) { i ->
             dustPts[i * 2] = rnd.nextFloat() * Constants.GAME_WIDTH
             dustPts[i * 2 + 1] = rnd.nextFloat() * Constants.GAME_HEIGHT
         }
-        repeat(45) { stars.add(makeStar(0.22f, 1.0f, 130)) }   // far, slow, dim
-        repeat(30) { stars.add(makeStar(0.55f, 1.7f, 190)) }   // mid
-        repeat(18) { stars.add(makeStar(1.0f, 2.6f, 245)) }    // near, fast, bright
+
+        stars.clear()
+        repeat(45) { stars.add(makeStar(0.22f, 1.0f, 130)) }
+        repeat(30) { stars.add(makeStar(0.55f, 1.7f, 190)) }
+        repeat(18) { stars.add(makeStar(1.0f, 2.6f, 245)) }
+
+        heroStars.clear()
         repeat(6) {
             heroStars.add(
                 HeroStar(
@@ -95,14 +122,10 @@ class Background {
                 )
             )
         }
-        val palettes = listOf(
-            intArrayOf(Color.argb(90, 90, 130, 255), Color.argb(60, 130, 80, 220)),   // blue -> violet
-            intArrayOf(Color.argb(85, 200, 90, 200), Color.argb(55, 90, 60, 200)),     // magenta -> indigo
-            intArrayOf(Color.argb(80, 255, 130, 90), Color.argb(50, 200, 70, 120)),    // ember -> rose
-            intArrayOf(Color.argb(85, 80, 220, 210), Color.argb(55, 70, 100, 220))     // teal -> blue
-        )
-        repeat(4) { i ->
-            val palette = palettes[i % palettes.size]
+
+        nebulae.clear()
+        val palette = theme.nebulaColors
+        repeat(theme.nebulaCount) {
             val blobs = List(2 + rnd.nextInt(3)) { j ->
                 Blob(
                     (rnd.nextFloat() - 0.5f) * 220f, (rnd.nextFloat() - 0.5f) * 160f,
@@ -116,18 +139,19 @@ class Background {
                 )
             )
         }
-        planets.add(
-            Planet(
-                Constants.GAME_WIDTH * 0.78f, Constants.GAME_HEIGHT * 0.2f, 46f, 6f,
-                Color.rgb(255, 210, 150), Color.rgb(120, 60, 40), ringed = true
+
+        planets.clear()
+        repeat(theme.planetCount) { i ->
+            val (lit, shadow) = theme.planetColors[i % theme.planetColors.size]
+            planets.add(
+                Planet(
+                    Constants.GAME_WIDTH * (0.15f + rnd.nextFloat() * 0.7f),
+                    Constants.GAME_HEIGHT * (0.1f + rnd.nextFloat() * 0.6f),
+                    24f + rnd.nextFloat() * 24f, 5f + rnd.nextFloat() * 6f,
+                    lit, shadow, ringed = i == 0
+                )
             )
-        )
-        planets.add(
-            Planet(
-                Constants.GAME_WIDTH * 0.16f, Constants.GAME_HEIGHT * 0.62f, 26f, 9f,
-                Color.rgb(150, 200, 255), Color.rgb(40, 60, 110), ringed = false
-            )
-        )
+        }
     }
 
     private fun tintFor(warmth: Float): Int {
@@ -137,21 +161,6 @@ class Background {
         val g = (cool.second + (warm.second - cool.second) * warmth).toInt()
         val b = (cool.third + (warm.third - cool.third) * warmth).toInt()
         return Color.rgb(r, g, b)
-    }
-
-    private fun buildSky() {
-        skyPaint.shader = LinearGradient(
-            0f, 0f, 0f, Constants.GAME_HEIGHT,
-            intArrayOf(
-                Color.rgb(3, 4, 14),
-                Color.rgb(10, 12, 34),
-                Color.rgb(22, 16, 46),
-                Color.rgb(14, 20, 44),
-                Color.rgb(4, 6, 18)
-            ),
-            floatArrayOf(0f, 0.28f, 0.5f, 0.72f, 1f),
-            Shader.TileMode.CLAMP
-        )
     }
 
     private fun makeStar(speedScale: Float, size: Float, bright: Int) = Star(
@@ -179,28 +188,19 @@ class Background {
             p.y += p.speed * dt
             if (p.y - p.r > Constants.GAME_HEIGHT) { p.y = -p.r; p.x = rnd.nextFloat() * Constants.GAME_WIDTH }
         }
-        for (i in 0 until dustCount) {
-            val yi = i * 2 + 1
-            dustPts[yi] += dustSpeed * dt
-            if (dustPts[yi] > Constants.GAME_HEIGHT) {
-                dustPts[yi] = 0f
-                dustPts[i * 2] = rnd.nextFloat() * Constants.GAME_WIDTH
-            }
-        }
+        updateDust(dt)
 
-        shootingStarTimer -= dt
-        if (shootingStarTimer <= 0f && shootingStars.size < 2) {
-            shootingStarTimer = 5f + rnd.nextFloat() * 9f
-            val startX = rnd.nextFloat() * Constants.GAME_WIDTH * 0.7f
-            val speed = 700f + rnd.nextFloat() * 400f
-            val angle = Math.toRadians((25 + rnd.nextFloat() * 30).toDouble())
-            shootingStars.add(
-                ShootingStar(
-                    startX, -20f,
-                    (sin(angle) * speed).toFloat(), (cos(angle) * speed).toFloat(),
-                    0.9f, 0.9f
+        if (theme.starVisibility > 0.4f) {
+            shootingStarTimer -= dt
+            if (shootingStarTimer <= 0f && shootingStars.size < 2) {
+                shootingStarTimer = 5f + rnd.nextFloat() * 9f
+                val startX = rnd.nextFloat() * Constants.GAME_WIDTH * 0.7f
+                val speed = 700f + rnd.nextFloat() * 400f
+                val angle = Math.toRadians((25 + rnd.nextFloat() * 30).toDouble())
+                shootingStars.add(
+                    ShootingStar(startX, -20f, (sin(angle) * speed).toFloat(), (cos(angle) * speed).toFloat(), 0.9f, 0.9f)
                 )
-            )
+            }
         }
         var i = 0
         while (i < shootingStars.size) {
@@ -210,40 +210,83 @@ class Background {
                 shootingStars.removeAt(i)
             } else i++
         }
+
+        if (theme.lightning) {
+            lightningTimer -= dt
+            if (lightningTimer <= 0f) { lightningTimer = 5f + rnd.nextFloat() * 10f; lightningFlash = 1f }
+            if (lightningFlash > 0f) lightningFlash = (lightningFlash - dt * 3.2f).coerceAtLeast(0f)
+        }
+    }
+
+    private fun updateDust(dt: Float) {
+        val speed = when (theme.dustMode) {
+            DustMode.SPARKLE -> 18f
+            DustMode.MIST -> 10f
+            DustMode.RAIN -> 950f
+            DustMode.EMBER -> -55f
+            DustMode.SNOW -> 34f
+        }
+        val sway = if (theme.dustMode == DustMode.MIST || theme.dustMode == DustMode.SNOW) {
+            sin(time * 0.6f) * 0.6f
+        } else 0f
+        for (i in 0 until dustCount) {
+            val xi = i * 2; val yi = xi + 1
+            dustPts[yi] += speed * dt
+            dustPts[xi] += sway
+            if (speed >= 0f && dustPts[yi] > Constants.GAME_HEIGHT) {
+                dustPts[yi] = 0f; dustPts[xi] = rnd.nextFloat() * Constants.GAME_WIDTH
+            } else if (speed < 0f && dustPts[yi] < 0f) {
+                dustPts[yi] = Constants.GAME_HEIGHT; dustPts[xi] = rnd.nextFloat() * Constants.GAME_WIDTH
+            }
+        }
     }
 
     fun render(canvas: Canvas) {
         canvas.drawRect(0f, 0f, Constants.GAME_WIDTH, Constants.GAME_HEIGHT, skyPaint)
 
-        dustPaint.strokeCap = Paint.Cap.ROUND
-        canvas.drawPoints(dustPts, dustPaint)
-
         renderNebulae(canvas)
-        renderStars(canvas)
+        renderHorizonGlow(canvas)
+        if (theme.starVisibility > 0.02f) renderStars(canvas)
         renderPlanets(canvas)
-        renderHeroStars(canvas)
-        renderShootingStars(canvas)
+        if (theme.starVisibility > 0.4f) {
+            renderHeroStars(canvas)
+            renderShootingStars(canvas)
+        }
+        renderDust(canvas)
+
+        if (theme.lightning && lightningFlash > 0f) {
+            flashPaint.color = Color.argb((lightningFlash * 130f).toInt().coerceIn(0, 255), 210, 225, 255)
+            canvas.drawRect(0f, 0f, Constants.GAME_WIDTH, Constants.GAME_HEIGHT, flashPaint)
+        }
     }
 
     private fun renderNebulae(canvas: Canvas) {
         for (n in nebulae) {
             for (b in n.blobs) {
                 val cx = n.x + b.dx; val cy = n.y + b.dy
-                nebulaPaint.shader = RadialGradient(
-                    cx, cy, b.r, b.color, Color.TRANSPARENT, Shader.TileMode.CLAMP
-                )
+                nebulaPaint.shader = RadialGradient(cx, cy, b.r, b.color, Color.TRANSPARENT, Shader.TileMode.CLAMP)
                 canvas.drawCircle(cx, cy, b.r, nebulaPaint)
             }
         }
         nebulaPaint.shader = null
     }
 
+    private fun renderHorizonGlow(canvas: Canvas) {
+        val color = theme.horizonGlow ?: return
+        val cy = Constants.GAME_HEIGHT * 1.02f
+        glowPaint.shader = RadialGradient(
+            Constants.GAME_WIDTH / 2f, cy, Constants.GAME_HEIGHT * 0.5f,
+            color, Color.TRANSPARENT, Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(0f, Constants.GAME_HEIGHT * 0.4f, Constants.GAME_WIDTH, Constants.GAME_HEIGHT, glowPaint)
+        glowPaint.shader = null
+    }
+
     private fun renderStars(canvas: Canvas) {
         for (s in stars) {
             val twinkle = 0.55f + 0.45f * sin(time * s.twinkleSpeed + s.twinklePhase)
-            val tint = tintFor(s.warmth)
-            starPaint.color = tint
-            starPaint.alpha = (s.baseAlpha * twinkle).toInt().coerceIn(0, 255)
+            starPaint.color = tintFor(s.warmth)
+            starPaint.alpha = (s.baseAlpha * twinkle * theme.starVisibility).toInt().coerceIn(0, 255)
             canvas.drawCircle(s.x, s.y, s.size, starPaint)
         }
     }
@@ -251,18 +294,18 @@ class Background {
     private fun renderHeroStars(canvas: Canvas) {
         for (h in heroStars) {
             val twinkle = 0.5f + 0.5f * sin(time * h.twinkleSpeed + h.twinklePhase)
-            val glowAlpha = (110 * twinkle).toInt().coerceIn(0, 255)
+            val v = theme.starVisibility
             heroGlowPaint.color = h.color
-            heroGlowPaint.alpha = glowAlpha
+            heroGlowPaint.alpha = (110 * twinkle * v).toInt().coerceIn(0, 255)
             canvas.drawCircle(h.x, h.y, h.size * 2.6f, heroGlowPaint)
 
             heroCorePaint.color = Color.WHITE
-            heroCorePaint.alpha = (200 + 55 * twinkle).toInt().coerceIn(0, 255)
+            heroCorePaint.alpha = ((200 + 55 * twinkle) * v).toInt().coerceIn(0, 255)
             canvas.drawCircle(h.x, h.y, h.size * 0.55f, heroCorePaint)
 
             val flareLen = h.size * (1.6f + twinkle * 1.4f)
             heroFlarePaint.color = h.color
-            heroFlarePaint.alpha = (140 * twinkle).toInt().coerceIn(0, 255)
+            heroFlarePaint.alpha = (140 * twinkle * v).toInt().coerceIn(0, 255)
             heroFlarePaint.strokeWidth = max(1f, h.size * 0.22f)
             canvas.drawLine(h.x - flareLen, h.y, h.x + flareLen, h.y, heroFlarePaint)
             canvas.drawLine(h.x, h.y - flareLen, h.x, h.y + flareLen, heroFlarePaint)
@@ -282,12 +325,30 @@ class Background {
                 canvas.restore()
             }
             planetPaint.shader = RadialGradient(
-                p.x - p.r * 0.35f, p.y - p.r * 0.35f, p.r * 1.6f,
-                p.lit, p.shadow, Shader.TileMode.CLAMP
+                p.x - p.r * 0.35f, p.y - p.r * 0.35f, p.r * 1.6f, p.lit, p.shadow, Shader.TileMode.CLAMP
             )
             canvas.drawCircle(p.x, p.y, p.r, planetPaint)
         }
         planetPaint.shader = null
+    }
+
+    private fun renderDust(canvas: Canvas) {
+        dustPaint.color = theme.dustColor
+        when (theme.dustMode) {
+            DustMode.RAIN -> {
+                dustPaint.strokeWidth = 2.6f
+                for (i in 0 until dustCount) {
+                    val xi = i * 2; val yi = xi + 1
+                    val li = i * 4
+                    rainLines[li] = dustPts[xi]; rainLines[li + 1] = dustPts[yi]
+                    rainLines[li + 2] = dustPts[xi] - 8f; rainLines[li + 3] = dustPts[yi] - 34f
+                }
+                canvas.drawLines(rainLines, dustPaint)
+            }
+            DustMode.SNOW -> { dustPaint.strokeWidth = 4.5f; canvas.drawPoints(dustPts, dustPaint) }
+            DustMode.EMBER -> { dustPaint.strokeWidth = 3f; canvas.drawPoints(dustPts, dustPaint) }
+            else -> { dustPaint.strokeWidth = 2.4f; canvas.drawPoints(dustPts, dustPaint) }
+        }
     }
 
     private fun renderShootingStars(canvas: Canvas) {

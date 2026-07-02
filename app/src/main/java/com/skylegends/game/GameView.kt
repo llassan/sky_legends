@@ -108,6 +108,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         isFocusable = true
         sound.musicEnabled = save.musicOn
         sound.sfxEnabled = save.sfxOn
+        syncMenuBackground()
+    }
+
+    /** Menu shows the *next* sector's theme, so progression reads even before a run starts. */
+    private fun syncMenuBackground() {
+        background.configure(save.campaignProgress.coerceIn(0, LevelLibrary.levels.size - 1))
     }
 
     override fun onDetachedFromWindow() {
@@ -167,6 +173,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         )
         player.spawnAtStart()
         currentSectorIndex = save.campaignProgress.coerceIn(0, LevelLibrary.levels.size - 1)
+        background.configure(currentSectorIndex)
         director = LevelDirector(LevelLibrary.level(currentSectorIndex + 1))
         bossWarning = 0f
         state = GameState.PLAYING
@@ -567,7 +574,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             }
             GameState.VICTORY, GameState.DEFEAT -> {
                 if (UiLayout.contains(UiLayout.retryButton, vx, vy)) { sound.click(); startGame() }
-                else if (UiLayout.contains(UiLayout.menuButton, vx, vy)) { sound.click(); state = GameState.MENU; menuTime = 0f }
+                else if (UiLayout.contains(UiLayout.menuButton, vx, vy)) {
+                    sound.click(); state = GameState.MENU; menuTime = 0f; syncMenuBackground()
+                }
             }
         }
     }
