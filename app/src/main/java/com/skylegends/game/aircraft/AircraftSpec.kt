@@ -31,6 +31,10 @@ data class AircraftSpec(
     val accentColor: Int,
     val flameColor: Int,
     val defaultWeapon: WeaponSpec,
+    /** Fixed wingtip guns fired automatically alongside the primary weapon, or null for none. */
+    val wingWeapon: WeaponSpec? = null,
+    /** Fixed missile pods fired automatically on a long cooldown, or null for none. */
+    val missileWeapon: WeaponSpec? = null,
     val abilityBlurb: String,
     val ability: AbilityType,
     val abilityName: String,
@@ -61,7 +65,8 @@ object AircraftCatalog {
         maxHp = 70f, followSpeed = 31f, maxShield = 40f, shape = HullShape.ARROW,
         bodyColor = Color.rgb(120, 255, 200), wingColor = Color.rgb(30, 150, 120),
         accentColor = Color.rgb(235, 255, 248), flameColor = Color.rgb(90, 255, 210),
-        defaultWeapon = WeaponCatalog.SPREAD, abilityBlurb = "Blazing speed, thin armor",
+        defaultWeapon = WeaponCatalog.SPREAD, wingWeapon = WeaponCatalog.WING_CANNON,
+        abilityBlurb = "Blazing speed, thin armor",
         ability = AbilityType.PHASE_DASH, abilityName = "PHASE DASH", abilitySymbol = "»",
         abilityCooldown = 8f, abilityDuration = 0.6f,
         statArmor = 0.3f, statSpeed = 1.0f, statFirepower = 0.7f
@@ -72,7 +77,8 @@ object AircraftCatalog {
         maxHp = 165f, followSpeed = 15f, maxShield = 90f, shape = HullShape.HEAVY,
         bodyColor = Color.rgb(200, 150, 255), wingColor = Color.rgb(110, 70, 180),
         accentColor = Color.rgb(240, 225, 255), flameColor = Color.rgb(200, 120, 255),
-        defaultWeapon = WeaponCatalog.PLASMA, abilityBlurb = "Fortress hull, heavy plasma",
+        defaultWeapon = WeaponCatalog.PLASMA, wingWeapon = WeaponCatalog.WING_CANNON,
+        missileWeapon = WeaponCatalog.MISSILE_POD, abilityBlurb = "Fortress hull, heavy plasma",
         ability = AbilityType.SIEGE_BURST, abilityName = "SIEGE BURST", abilitySymbol = "✦",
         abilityCooldown = 18f, abilityDuration = 0f,
         statArmor = 1.0f, statSpeed = 0.35f, statFirepower = 0.9f

@@ -98,4 +98,36 @@ object WeaponCatalog {
 
     /** Ordered list used for power-up cycling and the hangar. */
     val all = listOf(MACHINE_GUN, SPREAD, PLASMA)
+
+    /**
+     * Fixed auxiliary armament — not upgradeable via power-ups, always fired at level 1.
+     * [com.skylegends.game.aircraft.AircraftSpec.wingWeapon]/`missileWeapon` layer these on
+     * top of whatever primary weapon is equipped, so "advanced" aircraft keep their extra
+     * firepower even after a weapon-swap pickup.
+     */
+    val WING_CANNON = WeaponSpec(
+        id = "wing_cannon",
+        displayName = "Wing Cannon",
+        baseFireRate = 0.22f,
+        baseDamage = 5f,
+        bulletSpeed = 900f,
+        bulletColor = Color.rgb(255, 255, 190),
+        glowColor = Color.rgb(255, 210, 70),
+        bulletRadius = 4f,
+        muzzleColor = Color.rgb(255, 235, 150),
+        portsByLevel = listOf(listOf(BulletPort(-26f, 0f), BulletPort(26f, 0f)))
+    )
+
+    val MISSILE_POD = WeaponSpec(
+        id = "missile_pod",
+        displayName = "Missile Pod",
+        baseFireRate = 2.4f,
+        baseDamage = 60f,
+        bulletSpeed = 560f,
+        bulletColor = Color.rgb(255, 150, 90),
+        glowColor = Color.rgb(255, 80, 40),
+        bulletRadius = 10f,
+        muzzleColor = Color.rgb(255, 190, 130),
+        portsByLevel = listOf(listOf(BulletPort(-20f, 0f), BulletPort(20f, 0f)))
+    )
 }

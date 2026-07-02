@@ -297,15 +297,69 @@ class Hud {
         c.drawCircle(cx, cy, 90f, fill)
         c.save(); c.translate(cx, cy)
         val w = 54f * s; val h = 64f * s
-        fill.color = spec.wingColor
         val p = android.graphics.Path()
-        p.moveTo(-w / 2f, h * 0.18f); p.lineTo(-w * 0.16f, -h * 0.1f); p.lineTo(-w * 0.16f, h * 0.34f); p.close(); c.drawPath(p, fill)
-        p.reset(); p.moveTo(w / 2f, h * 0.18f); p.lineTo(w * 0.16f, -h * 0.1f); p.lineTo(w * 0.16f, h * 0.34f); p.close(); c.drawPath(p, fill)
-        fill.color = spec.bodyColor
-        p.reset(); p.moveTo(0f, -h / 2f); p.lineTo(w * 0.2f, h * 0.3f); p.lineTo(w * 0.12f, h / 2f)
-        p.lineTo(-w * 0.12f, h / 2f); p.lineTo(-w * 0.2f, h * 0.3f); p.close(); c.drawPath(p, fill)
-        fill.color = spec.accentColor; c.drawCircle(0f, -h * 0.12f, w * 0.1f, fill)
+        when (spec.shape) {
+            com.skylegends.game.aircraft.HullShape.DELTA -> {
+                fill.color = spec.wingColor
+                p.moveTo(-w / 2f, h * 0.18f); p.lineTo(-w * 0.16f, -h * 0.1f); p.lineTo(-w * 0.16f, h * 0.34f); p.close(); c.drawPath(p, fill)
+                p.reset(); p.moveTo(w / 2f, h * 0.18f); p.lineTo(w * 0.16f, -h * 0.1f); p.lineTo(w * 0.16f, h * 0.34f); p.close(); c.drawPath(p, fill)
+                fill.color = spec.bodyColor
+                p.reset(); p.moveTo(0f, -h / 2f); p.lineTo(w * 0.2f, h * 0.3f); p.lineTo(w * 0.12f, h / 2f)
+                p.lineTo(-w * 0.12f, h / 2f); p.lineTo(-w * 0.2f, h * 0.3f); p.close(); c.drawPath(p, fill)
+                fill.color = spec.accentColor; c.drawCircle(0f, -h * 0.12f, w * 0.1f, fill)
+                drawHardware(c, spec, w * 0.5f, h * 0.18f)
+            }
+            com.skylegends.game.aircraft.HullShape.ARROW -> {
+                val aw = w * 0.92f; val ah = h * 1.1f
+                fill.color = spec.wingColor
+                p.moveTo(-aw * 0.08f, -ah * 0.10f); p.lineTo(-aw * 0.64f, ah * 0.46f)
+                p.lineTo(-aw * 0.30f, ah * 0.40f); p.lineTo(-aw * 0.08f, ah * 0.14f); p.close(); c.drawPath(p, fill)
+                p.reset(); p.moveTo(aw * 0.08f, -ah * 0.10f); p.lineTo(aw * 0.64f, ah * 0.46f)
+                p.lineTo(aw * 0.30f, ah * 0.40f); p.lineTo(aw * 0.08f, ah * 0.14f); p.close(); c.drawPath(p, fill)
+                fill.color = spec.bodyColor
+                p.reset(); p.moveTo(0f, -ah * 0.58f); p.lineTo(aw * 0.09f, ah * 0.30f); p.lineTo(0f, ah * 0.5f)
+                p.lineTo(-aw * 0.09f, ah * 0.30f); p.close(); c.drawPath(p, fill)
+                fill.color = spec.accentColor; c.drawCircle(0f, -ah * 0.20f, aw * 0.07f, fill)
+                drawHardware(c, spec, aw * 0.64f, ah * 0.44f)
+            }
+            com.skylegends.game.aircraft.HullShape.HEAVY -> {
+                val hw = w * 1.4f; val hh = h * 0.96f
+                fill.color = spec.wingColor
+                c.drawRoundRect(-hw * 0.58f, -hh * 0.02f, -hw * 0.18f, hh * 0.40f, 8f, 8f, fill)
+                c.drawRoundRect(hw * 0.18f, -hh * 0.02f, hw * 0.58f, hh * 0.40f, 8f, 8f, fill)
+                fill.color = spec.bodyColor
+                p.moveTo(0f, -hh / 2f); p.lineTo(hw * 0.24f, hh * 0.10f); p.lineTo(hw * 0.20f, hh * 0.5f)
+                p.lineTo(-hw * 0.20f, hh * 0.5f); p.lineTo(-hw * 0.24f, hh * 0.10f); p.close(); c.drawPath(p, fill)
+                fill.color = spec.accentColor; c.drawCircle(0f, -hh * 0.14f, hw * 0.10f, fill)
+                fill.color = spec.wingColor; c.drawRect(-hw * 0.14f, hh * 0.16f, hw * 0.14f, hh * 0.22f, fill)
+                drawHardware(c, spec, hw * 0.42f, hh * 0.22f)
+            }
+        }
         c.restore()
+    }
+
+    /** Mirrors [com.skylegends.game.entities.Player]'s wing-gun/missile-pod hardware so the
+     * hangar preview matches what you actually see in flight. */
+    private fun drawHardware(c: Canvas, spec: com.skylegends.game.aircraft.AircraftSpec, wingX: Float, wingY: Float) {
+        val wing = spec.wingWeapon
+        if (wing != null) {
+            fill.color = Color.rgb(60, 62, 74)
+            c.drawRoundRect(-wingX - 4f, wingY - 12f, -wingX + 4f, wingY + 8f, 2f, 2f, fill)
+            c.drawRoundRect(wingX - 4f, wingY - 12f, wingX + 4f, wingY + 8f, 2f, 2f, fill)
+            fill.color = wing.glowColor
+            c.drawCircle(-wingX, wingY - 12f, 2.6f, fill)
+            c.drawCircle(wingX, wingY - 12f, 2.6f, fill)
+        }
+        val missile = spec.missileWeapon
+        if (missile != null) {
+            val podX = wingX * 0.62f
+            fill.color = Color.rgb(80, 82, 92)
+            c.drawRoundRect(-podX - 7f, wingY + 4f, -podX + 7f, wingY + 24f, 4f, 4f, fill)
+            c.drawRoundRect(podX - 7f, wingY + 4f, podX + 7f, wingY + 24f, 4f, 4f, fill)
+            fill.color = missile.glowColor
+            c.drawCircle(-podX, wingY + 4f, 4.5f, fill)
+            c.drawCircle(podX, wingY + 4f, 4.5f, fill)
+        }
     }
 
     private fun statBar(c: Canvas, label: String, frac: Float, y: Float, color: Int) {

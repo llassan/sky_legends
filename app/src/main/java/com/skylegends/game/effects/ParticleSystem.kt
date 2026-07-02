@@ -36,6 +36,16 @@ class ParticleSystem {
         }
     }
 
+    /** A single soft smoke wisp, left behind by missiles as they fly. */
+    fun smokeTrail(x: Float, y: Float) {
+        emit {
+            it.configure(
+                ParticleKind.SMOKE, x, y, (Random.nextFloat() - 0.5f) * 20f, 30f + Random.nextFloat() * 20f,
+                0.4f + Random.nextFloat() * 0.2f, 7f + Random.nextFloat() * 4f, Color.rgb(120, 120, 120), drag = 0.95f
+            )
+        }
+    }
+
     fun hitSparks(x: Float, y: Float, color: Int) {
         repeat(6) {
             val a = Random.nextFloat() * 2f * Math.PI.toFloat()

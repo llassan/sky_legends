@@ -46,6 +46,8 @@ class Player : Entity() {
     val alive get() = hp > 0f
 
     private var fireCooldown = 0f
+    private var wingFireCooldown = 0f
+    private var missileFireCooldown = 0f
     private var invuln = 0f
     private var tilt = 0f
     private var lastX = 0f
@@ -87,6 +89,8 @@ class Player : Entity() {
         shield = 0f
         invuln = 0f
         fireCooldown = 0f
+        wingFireCooldown = 0f
+        missileFireCooldown = 0f
         tilt = 0f
         firing = true
         active = true
@@ -115,6 +119,8 @@ class Player : Entity() {
 
         if (invuln > 0f) invuln -= dt
         if (fireCooldown > 0f) fireCooldown -= dt
+        if (wingFireCooldown > 0f) wingFireCooldown -= dt
+        if (missileFireCooldown > 0f) missileFireCooldown -= dt
         if (abilityCooldownRemaining > 0f) abilityCooldownRemaining -= dt
         if (overdriveTimer > 0f) overdriveTimer -= dt
         flameFlicker += dt * 40f
@@ -136,6 +142,35 @@ class Player : Entity() {
             spawner.spawn(noseX + port.offsetX, noseY, vx, vy, weapon.bulletRadius, dmg, weapon.bulletColor, weapon.glowColor)
         }
         fireCooldown = weapon.fireRateFor(weaponLevel) * fireRateMult * overdriveRate
+        return true
+    }
+
+    /**
+     * Fixed wingtip guns — "advanced" aircraft only ([AircraftSpec.wingWeapon]). Independent
+     * cooldown from the primary weapon so a weapon-swap pickup never removes it.
+     */
+    fun tryFireWingCannon(spawner: BulletSpawner): Boolean {
+        val wing = spec.wingWeapon ?: return false
+        if (!firing || !alive || wingFireCooldown > 0f) return false
+        val noseY = pos.y - Constants.PLAYER_HEIGHT * 0.15f
+        val dmg = wing.damageFor(1) * damageMult
+        for (port in wing.portsFor(1)) {
+            spawner.spawn(pos.x + port.offsetX, noseY, 0f, -wing.bulletSpeed, wing.bulletRadius, dmg, wing.bulletColor, wing.glowColor)
+        }
+        wingFireCooldown = wing.fireRateFor(1) * fireRateMult
+        return true
+    }
+
+    /** Fixed missile pods — "most advanced" aircraft only ([AircraftSpec.missileWeapon]). */
+    fun tryFireMissile(spawner: BulletSpawner): Boolean {
+        val missile = spec.missileWeapon ?: return false
+        if (!firing || !alive || missileFireCooldown > 0f) return false
+        val noseY = pos.y + Constants.PLAYER_HEIGHT * 0.1f
+        val dmg = missile.damageFor(1) * damageMult
+        for (port in missile.portsFor(1)) {
+            spawner.spawn(pos.x + port.offsetX, noseY, 0f, -missile.bulletSpeed, missile.bulletRadius, dmg, missile.bulletColor, missile.glowColor)
+        }
+        missileFireCooldown = missile.fireRateFor(1) * fireRateMult
         return true
     }
 
@@ -223,6 +258,8 @@ class Player : Entity() {
     }
 
     private fun renderDelta(canvas: Canvas) {
+        // Vanguard — clean, balanced fighter. No bolt-on hardware: the plain baseline
+        // silhouette the other two visibly add weapons pods onto.
         val w = Constants.PLAYER_WIDTH; val h = Constants.PLAYER_HEIGHT
         paint.color = spec.wingColor
         wing(canvas, w, h, -1f); wing(canvas, w, h, 1f)
@@ -237,6 +274,7 @@ class Player : Entity() {
         path.moveTo(0f, -h / 2f); path.lineTo(w * 0.06f, h * 0.1f); path.lineTo(-w * 0.06f, h * 0.1f); path.close()
         canvas.drawPath(path, paint)
         canvas.drawCircle(0f, -h * 0.12f, w * 0.10f, paint)
+        renderHardware(canvas, w * 0.5f, h * 0.18f)
     }
 
     private fun wing(canvas: Canvas, w: Float, h: Float, s: Float) {
@@ -248,37 +286,76 @@ class Player : Entity() {
     }
 
     private fun renderArrow(canvas: Canvas) {
-        // Narrow, swept-back interceptor.
-        val w = Constants.PLAYER_WIDTH; val h = Constants.PLAYER_HEIGHT
+        // Nova — sleek, narrow interceptor: long needle nose, sharply swept thin wings,
+        // twin engine strakes. Visibly slimmer than the other two, not just recolored.
+        val w = Constants.PLAYER_WIDTH * 0.92f; val h = Constants.PLAYER_HEIGHT * 1.1f
         paint.color = spec.wingColor
         path.reset()
-        path.moveTo(-w * 0.10f, -h * 0.05f); path.lineTo(-w * 0.55f, h * 0.42f)
-        path.lineTo(-w * 0.10f, h * 0.30f); path.close(); canvas.drawPath(path, paint)
+        path.moveTo(-w * 0.08f, -h * 0.10f); path.lineTo(-w * 0.64f, h * 0.46f)
+        path.lineTo(-w * 0.30f, h * 0.40f); path.lineTo(-w * 0.08f, h * 0.14f)
+        path.close(); canvas.drawPath(path, paint)
         path.reset()
-        path.moveTo(w * 0.10f, -h * 0.05f); path.lineTo(w * 0.55f, h * 0.42f)
-        path.lineTo(w * 0.10f, h * 0.30f); path.close(); canvas.drawPath(path, paint)
+        path.moveTo(w * 0.08f, -h * 0.10f); path.lineTo(w * 0.64f, h * 0.46f)
+        path.lineTo(w * 0.30f, h * 0.40f); path.lineTo(w * 0.08f, h * 0.14f)
+        path.close(); canvas.drawPath(path, paint)
         paint.color = spec.bodyColor
         path.reset()
-        path.moveTo(0f, -h * 0.56f)
-        path.lineTo(w * 0.14f, h * 0.36f); path.lineTo(0f, h * 0.5f)
-        path.lineTo(-w * 0.14f, h * 0.36f); path.close(); canvas.drawPath(path, paint)
+        path.moveTo(0f, -h * 0.58f)
+        path.lineTo(w * 0.09f, h * 0.30f); path.lineTo(0f, h * 0.5f)
+        path.lineTo(-w * 0.09f, h * 0.30f)
+        path.close(); canvas.drawPath(path, paint)
         paint.color = spec.accentColor
-        canvas.drawCircle(0f, -h * 0.16f, w * 0.09f, paint)
+        canvas.drawCircle(0f, -h * 0.20f, w * 0.07f, paint)
+        paint.color = spec.flameColor
+        paint.alpha = 140
+        canvas.drawRect(-w * 0.10f, h * 0.32f, -w * 0.04f, h * 0.48f, paint)
+        canvas.drawRect(w * 0.04f, h * 0.32f, w * 0.10f, h * 0.48f, paint)
+        paint.alpha = 255
+        renderHardware(canvas, w * 0.64f, h * 0.44f)
     }
 
     private fun renderHeavy(canvas: Canvas) {
-        // Wide twin-hull bomber.
-        val w = Constants.PLAYER_WIDTH * 1.12f; val h = Constants.PLAYER_HEIGHT
+        // Titan — broad, heavy bomber: wide integrated wing slabs, boxy central hull,
+        // armor plating band. Noticeably wider and bulkier than Vanguard/Nova.
+        val w = Constants.PLAYER_WIDTH * 1.4f; val h = Constants.PLAYER_HEIGHT * 0.96f
         paint.color = spec.wingColor
-        canvas.drawRoundRect(-w * 0.5f, -h * 0.06f, -w * 0.24f, h * 0.46f, 6f, 6f, paint)
-        canvas.drawRoundRect(w * 0.24f, -h * 0.06f, w * 0.5f, h * 0.46f, 6f, 6f, paint)
+        canvas.drawRoundRect(-w * 0.58f, -h * 0.02f, -w * 0.18f, h * 0.40f, 8f, 8f, paint)
+        canvas.drawRoundRect(w * 0.18f, -h * 0.02f, w * 0.58f, h * 0.40f, 8f, 8f, paint)
         paint.color = spec.bodyColor
         path.reset()
         path.moveTo(0f, -h / 2f)
-        path.lineTo(w * 0.30f, h * 0.28f); path.lineTo(w * 0.22f, h * 0.5f)
-        path.lineTo(-w * 0.22f, h * 0.5f); path.lineTo(-w * 0.30f, h * 0.28f)
+        path.lineTo(w * 0.24f, h * 0.10f); path.lineTo(w * 0.20f, h * 0.5f)
+        path.lineTo(-w * 0.20f, h * 0.5f); path.lineTo(-w * 0.24f, h * 0.10f)
         path.close(); canvas.drawPath(path, paint)
         paint.color = spec.accentColor
-        canvas.drawCircle(0f, -h * 0.1f, w * 0.12f, paint)
+        canvas.drawCircle(0f, -h * 0.14f, w * 0.10f, paint)
+        paint.color = spec.wingColor
+        canvas.drawRect(-w * 0.14f, h * 0.16f, w * 0.14f, h * 0.22f, paint)
+        renderHardware(canvas, w * 0.42f, h * 0.22f)
+    }
+
+    /**
+     * Wing-mounted gun barrels and/or missile pods, drawn purely from what [spec] actually
+     * carries — so the visual affordance can never drift from the real loadout. [wingX]/[wingY]
+     * is roughly where each hull's wingtip sits, passed in by the caller.
+     */
+    private fun renderHardware(canvas: Canvas, wingX: Float, wingY: Float) {
+        if (spec.wingWeapon != null) {
+            paint.color = Color.rgb(60, 62, 74)
+            canvas.drawRoundRect(-wingX - 4f, wingY - 12f, -wingX + 4f, wingY + 8f, 2f, 2f, paint)
+            canvas.drawRoundRect(wingX - 4f, wingY - 12f, wingX + 4f, wingY + 8f, 2f, 2f, paint)
+            paint.color = spec.wingWeapon!!.glowColor
+            canvas.drawCircle(-wingX, wingY - 12f, 2.6f, paint)
+            canvas.drawCircle(wingX, wingY - 12f, 2.6f, paint)
+        }
+        if (spec.missileWeapon != null) {
+            val podX = wingX * 0.62f
+            paint.color = Color.rgb(80, 82, 92)
+            canvas.drawRoundRect(-podX - 7f, wingY + 4f, -podX + 7f, wingY + 24f, 4f, 4f, paint)
+            canvas.drawRoundRect(podX - 7f, wingY + 4f, podX + 7f, wingY + 24f, 4f, 4f, paint)
+            paint.color = spec.missileWeapon!!.glowColor
+            canvas.drawCircle(-podX, wingY + 4f, 4.5f, paint)
+            canvas.drawCircle(podX, wingY + 4f, 4.5f, paint)
+        }
     }
 }

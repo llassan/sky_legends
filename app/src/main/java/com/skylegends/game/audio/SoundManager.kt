@@ -66,6 +66,7 @@ class SoundManager(private val context: Context) {
             loadSfx("defeat", genDefeat())
             loadSfx("ability", genAbility())
             loadSfx("heartbeat", genHeartbeat())
+            loadSfx("missile", genMissile())
             musicBase = prepareLoop("music_base", genMusicBase())
             musicCombat = prepareLoop("music_combat", genMusicCombat())
             musicBoss = prepareLoop("music_boss", genMusicBoss())
@@ -109,6 +110,7 @@ class SoundManager(private val context: Context) {
     fun victory() = play("victory", 1f)
     fun defeat() = play("defeat", 1f)
     fun ability() = play("ability", 0.75f)
+    fun missile() = play("missile", 0.8f, minGapMs = 150)
     fun heartbeat() = play("heartbeat", 0.55f, minGapMs = 250)
 
     // ---------------- Adaptive music ----------------
@@ -268,6 +270,12 @@ class SoundManager(private val context: Context) {
     private fun genHeartbeat(): FloatArray = buf(0.16f).also {
         osc(it, 0, 0.09f, 90f, 45f, 0.55f, 22f, 0)
         noiseBurst(it, 0, 0.03f, 0.15f, 90f)
+    }
+
+    private fun genMissile(): FloatArray = buf(0.4f).also {
+        noiseBurst(it, 0, 0.18f, 0.5f, 12f, lowpass = 0.4f)          // ignition whoosh
+        osc(it, 0, 0.35f, 140f, 60f, 0.55f, 5f, 0)                    // low launch thump
+        osc(it, 0, 0.08f, 900f, 300f, 0.2f, 30f, 0)                   // brief crack
     }
 
     // ---------------- Adaptive music stems ----------------

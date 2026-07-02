@@ -93,6 +93,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private val enemySpawner = BulletSpawner { x, y, vx, vy, r, dmg, core, glow ->
         spawnBullet(x, y, vx, vy, r, dmg, false, core, glow)
     }
+    private val missileSpawner = BulletSpawner { x, y, vx, vy, r, dmg, core, glow ->
+        spawnBullet(x, y, vx, vy, r, dmg, true, core, glow, isMissile = true)
+    }
 
     // Siege Burst reaches outside the Player — damages everything currently on screen.
     private val abilityContext = AbilityContext { damage, ox, oy ->
@@ -236,6 +239,17 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 particles.muzzleFlash(player.pos.x, player.pos.y - Constants.PLAYER_HEIGHT / 2f, player.weapon.muzzleColor)
                 sound.shoot()
             }
+            if (player.tryFireWingCannon(playerSpawner)) {
+                val wing = player.spec.wingWeapon!!
+                val wingY = player.pos.y - Constants.PLAYER_HEIGHT * 0.15f
+                for (port in wing.portsFor(1)) particles.muzzleFlash(player.pos.x + port.offsetX, wingY, wing.muzzleColor)
+            }
+            if (player.tryFireMissile(missileSpawner)) {
+                sound.missile()
+                val missile = player.spec.missileWeapon!!
+                val noseY = player.pos.y + Constants.PLAYER_HEIGHT * 0.1f
+                for (port in missile.portsFor(1)) particles.muzzleFlash(player.pos.x + port.offsetX, noseY, missile.muzzleColor)
+            }
             // Low-health heartbeat cue — faster as hull nears zero.
             val hpFrac = player.hp / player.maxHp
             if (hpFrac < 0.3f) {
@@ -283,7 +297,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         }
 
         // Bullets — integrate motion (also self-deactivate when off-screen) before collisions.
-        for (b in bullets) if (b.active) b.update(dt)
+        for (b in bullets) if (b.active) {
+            b.update(dt)
+            if (b.isMissile && Random.nextFloat() < 0.6f) particles.smokeTrail(b.pos.x, b.pos.y)
+        }
 
         resolveCollisions()
 
@@ -447,9 +464,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         }
     }
 
-    private fun spawnBullet(x: Float, y: Float, vx: Float, vy: Float, r: Float, dmg: Float, fromPlayer: Boolean, core: Int, glow: Int) {
+    private fun spawnBullet(
+        x: Float, y: Float, vx: Float, vy: Float, r: Float, dmg: Float, fromPlayer: Boolean,
+        core: Int, glow: Int, isMissile: Boolean = false
+    ) {
         val b = bulletPool.obtain() ?: return
-        b.configure(x, y, vx, vy, r, dmg, fromPlayer, core, glow)
+        b.configure(x, y, vx, vy, r, dmg, fromPlayer, core, glow, isMissile)
         bullets.add(b)
     }
 
