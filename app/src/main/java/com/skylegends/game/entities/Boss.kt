@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.Shader
+import com.skylegends.game.bosses.BossAttackPattern
 import com.skylegends.game.bosses.BossSpec
 import com.skylegends.game.utils.Constants
 import kotlin.math.atan2
@@ -32,6 +33,7 @@ class Boss(private val spec: BossSpec) : Entity() {
     private var age = 0f
     private var fireTimer = 1.2f
     private var spiralAngle = 0f
+    private var sweepAngle = 0f
     private var hitFlash = 0f
     private var hoverY = Constants.GAME_HEIGHT * 0.24f
 
@@ -61,7 +63,7 @@ class Boss(private val spec: BossSpec) : Entity() {
 
     fun spawn() {
         pos.set(Constants.GAME_WIDTH / 2f, -160f)
-        collisionRadius = 78f
+        collisionRadius = 78f * spec.hullScale
         active = true
         entering = true
     }
@@ -93,15 +95,19 @@ class Boss(private val spec: BossSpec) : Entity() {
         // Strafe.
         pos.x = Constants.GAME_WIDTH / 2f + sin(age * (0.6f + 0.2f * phase)) * (Constants.GAME_WIDTH * 0.28f)
 
-        // Attack cadence tightens with phase (and with the boss's overall aggression).
+        // Attack cadence tightens with phase (and with the boss's overall aggression). SWEEP_ARC
+        // fires much more often than the others — successive single shots at a slowly rotating
+        // angle is what makes the sweep read as a moving wall instead of discrete volleys.
         val cadence = (when (phase) { 1 -> 1.4f; 2 -> 0.95f; else -> 0.6f }) / spec.aggression
+        val effectiveCadence = if (spec.pattern == BossAttackPattern.SWEEP_ARC) cadence * 0.35f else cadence
         fireTimer -= dt
         if (fireTimer <= 0f) {
-            fireTimer = cadence
+            fireTimer = effectiveCadence
             attack(playerX, playerY, spawner)
         }
-        // Continuous spiral in later phases.
-        if (phase >= 2) {
+
+        // Continuous per-frame emitters, exclusive to the pattern that owns them.
+        if (spec.pattern == BossAttackPattern.SPIRAL_BURST && phase >= 2) {
             spiralAngle += dt * (2.4f + phase) * spec.aggression
             if ((age * 60f).toInt() % 4 == 0) {
                 val core = Color.rgb(255, 170, 90); val glow = Color.rgb(255, 90, 40)
@@ -112,12 +118,32 @@ class Boss(private val spec: BossSpec) : Entity() {
                 }
             }
         }
+        if (spec.pattern == BossAttackPattern.SWEEP_ARC) {
+            sweepAngle += dt * (1.1f + 0.3f * phase)
+        }
     }
 
+    /** Dispatches to this boss's signature pattern, then layers on a universal phase-3 ring
+     * (every boss's original climax) so the final stretch of every fight stays intense. */
     private fun attack(playerX: Float, playerY: Float, spawner: BulletSpawner) {
+        when (spec.pattern) {
+            BossAttackPattern.AIMED_FAN -> fireAimedFan(playerX, playerY, spawner)
+            BossAttackPattern.TWIN_CANNON -> fireTwinCannon(playerX, playerY, spawner)
+            BossAttackPattern.BULLET_RAIN -> fireBulletRain(spawner)
+            BossAttackPattern.SWEEP_ARC -> fireSweepShot(spawner)
+            BossAttackPattern.SPIRAL_BURST -> fireAimedFan(playerX, playerY, spawner)
+            BossAttackPattern.PINCER_AIMED -> firePincer(playerX, playerY, spawner)
+            BossAttackPattern.MINEFIELD -> fireMinefield(spawner)
+            BossAttackPattern.FINAL_MIX -> { fireAimedFan(playerX, playerY, spawner); fireBulletRain(spawner) }
+        }
+        if (phase == 3) fireRing(spawner)
+    }
+
+    /** Sentinel Mk-I's signature: a single aimed fan, widening with phase — the campaign's
+     * simplest, most readable pattern, fitting for the tutorial-tier first boss. */
+    private fun fireAimedFan(playerX: Float, playerY: Float, spawner: BulletSpawner) {
         val core = Color.rgb(255, 120, 120); val glow = Color.rgb(255, 50, 50)
         val oy = pos.y + 40f
-        // Aimed fan; wider + denser each phase, scaled by aggression.
         val base = atan2(playerY - oy, playerX - pos.x)
         val count = (3 + phase * 2 + ((spec.aggression - 1f) * 3f)).toInt().coerceAtLeast(3)
         val spread = 0.5f + 0.12f * phase
@@ -126,12 +152,76 @@ class Boss(private val spec: BossSpec) : Entity() {
             val a = base + t * spread
             spawner.spawn(pos.x, oy, cos(a) * 300f, sin(a) * 300f, 7f, 14f, core, glow)
         }
-        // Phase 3 adds a full ring on every volley.
-        if (phase == 3) {
-            for (i in 0 until 16) {
-                val a = (i / 16f) * 2f * Math.PI.toFloat()
-                spawner.spawn(pos.x, pos.y, cos(a) * 200f, sin(a) * 200f, 6f, 12f, core, glow)
+    }
+
+    /** Iron Warden: two independent aimed streams from the wingtip cannons instead of one
+     * central fan — reads as twin turrets locking on separately. */
+    private fun fireTwinCannon(playerX: Float, playerY: Float, spawner: BulletSpawner) {
+        val core = Color.rgb(255, 150, 90); val glow = Color.rgb(255, 90, 40)
+        val w = 200f * spec.hullScale
+        val shots = 1 + phase
+        for (side in intArrayOf(-1, 1)) {
+            val ox = pos.x + side * w * 0.44f; val oy = pos.y + 10f
+            val base = atan2(playerY - oy, playerX - ox)
+            for (i in 0 until shots) {
+                val a = base + (i - (shots - 1) / 2f) * 0.10f
+                spawner.spawn(ox, oy, cos(a) * 320f, sin(a) * 320f, 6.5f, 13f, core, glow)
             }
+        }
+    }
+
+    /** Stormbringer: a wide unaimed row falling straight down across the hull's width — a
+     * storm to weave through rather than a shot to dodge. */
+    private fun fireBulletRain(spawner: BulletSpawner) {
+        val core = Color.rgb(120, 190, 255); val glow = Color.rgb(70, 140, 255)
+        val w = 200f * spec.hullScale
+        val cols = 5 + phase * 2
+        for (i in 0 until cols) {
+            val t = if (cols == 1) 0f else i / (cols - 1f) - 0.5f
+            spawner.spawn(pos.x + t * w * 0.9f, pos.y + 30f, 0f, 260f + phase * 30f, 6f, 12f, core, glow)
+        }
+    }
+
+    /** Void Reaper: a single shot at the current sweep angle, fired on a much shorter cadence
+     * (see [tick]) so successive shots trace a moving scythe-like wall across the screen. */
+    private fun fireSweepShot(spawner: BulletSpawner) {
+        val core = Color.rgb(255, 210, 120); val glow = Color.rgb(255, 150, 40)
+        val a = Math.PI.toFloat() / 2f + sin(sweepAngle) * (0.9f + 0.15f * phase)
+        spawner.spawn(pos.x, pos.y + 40f, cos(a) * 320f, sin(a) * 320f, 7f, 13f, core, glow)
+    }
+
+    /** Apex Predator: twin aimed streams from both wingtips converging on the player's
+     * position — visually closes in like a pincer even though each bullet travels straight. */
+    private fun firePincer(playerX: Float, playerY: Float, spawner: BulletSpawner) {
+        val core = Color.rgb(200, 120, 255); val glow = Color.rgb(140, 60, 220)
+        val w = 200f * spec.hullScale
+        val extra = (phase - 1).coerceAtLeast(0)
+        for (side in intArrayOf(-1, 1)) {
+            val ox = pos.x + side * w * 0.56f; val oy = pos.y - 10f
+            val a = atan2(playerY - oy, playerX - ox)
+            for (i in 0..extra) {
+                val speed = 300f + i * 20f
+                spawner.spawn(ox, oy, cos(a) * speed, sin(a) * speed, 7f, 14f, core, glow)
+            }
+        }
+    }
+
+    /** Oblivion Ward: a slow, dense expanding ring the player must weave through rather than
+     * dodge a discrete shot — density grows with phase. */
+    private fun fireMinefield(spawner: BulletSpawner) {
+        val core = Color.rgb(180, 255, 180); val glow = Color.rgb(90, 220, 120)
+        val count = 10 + phase * 4
+        for (i in 0 until count) {
+            val a = (i / count.toFloat()) * 2f * Math.PI.toFloat() + age * 0.3f
+            spawner.spawn(pos.x, pos.y, cos(a) * 110f, sin(a) * 110f, 6f, 11f, core, glow)
+        }
+    }
+
+    private fun fireRing(spawner: BulletSpawner) {
+        val core = Color.rgb(255, 120, 120); val glow = Color.rgb(255, 50, 50)
+        for (i in 0 until 16) {
+            val a = (i / 16f) * 2f * Math.PI.toFloat()
+            spawner.spawn(pos.x, pos.y, cos(a) * 200f, sin(a) * 200f, 6f, 12f, core, glow)
         }
     }
 
@@ -141,7 +231,7 @@ class Boss(private val spec: BossSpec) : Entity() {
         canvas.save()
         canvas.translate(pos.x, pos.y)
 
-        val w = 200f; val h = 150f
+        val w = 200f * spec.hullScale; val h = 150f * spec.hullScale
         val damage = 1f - (hp / maxHp).coerceIn(0f, 1f)
 
         // Hull colour shifts toward red with rage.
