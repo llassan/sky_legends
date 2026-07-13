@@ -167,15 +167,23 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     // ---------------- Game flow ----------------
 
-    private fun startGame() {
-        score = 0; coinCount = 0; comboCount = 0; comboTimer = 0f; multiplier = 1f
-        victoryTimer = -1f; defeatTimer = -1f; bossDeathHandled = false; playerDeathHandled = false
-        newBest = false; heartbeatTimer = 0f
+    /** Clears every transient run entity — boss, enemies, bullets, coins, powerups, particles.
+     * Needed both when a new run starts AND when leaving VICTORY/DEFEAT back to the menu:
+     * without it, a boss that was still alive (or just killed) keeps rendering forever behind
+     * the menu, since [render] draws `boss` unconditionally whenever it's non-null. */
+    private fun clearRunEntities() {
         bullets.forEach { bulletPool.release(it) }; bullets.clear()
         coins.forEach { coinPool.release(it) }; coins.clear()
         enemies.clear(); powerups.clear()
         boss = null
         particles.clear()
+    }
+
+    private fun startGame() {
+        score = 0; coinCount = 0; comboCount = 0; comboTimer = 0f; multiplier = 1f
+        victoryTimer = -1f; defeatTimer = -1f; bossDeathHandled = false; playerDeathHandled = false
+        newBest = false; heartbeatTimer = 0f
+        clearRunEntities()
         camera.reset()
         // Apply selected aircraft + permanent upgrade bonuses for this run.
         val spec = AircraftCatalog.byId(save.selectedAircraft)
@@ -616,7 +624,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             GameState.VICTORY, GameState.DEFEAT -> {
                 if (UiLayout.contains(UiLayout.retryButton, vx, vy)) { sound.click(); startGame() }
                 else if (UiLayout.contains(UiLayout.menuButton, vx, vy)) {
-                    sound.click(); state = GameState.MENU; menuTime = 0f; syncMenuBackground(); syncMenuShip()
+                    sound.click(); clearRunEntities(); state = GameState.MENU; menuTime = 0f; syncMenuBackground(); syncMenuShip()
                 }
             }
         }

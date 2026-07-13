@@ -42,7 +42,10 @@ class Boss(private val spec: BossSpec) : Entity() {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
+    private val detailPath = Path()
     private val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 3f; alpha = 170 }
+    private val greeblePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val lightPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private fun lighten(c: Int, amt: Float): Int {
         val r = (Color.red(c) + (255 - Color.red(c)) * amt).toInt().coerceIn(0, 255)
@@ -141,28 +144,67 @@ class Boss(private val spec: BossSpec) : Entity() {
         val w = 200f; val h = 150f
         val damage = 1f - (hp / maxHp).coerceIn(0f, 1f)
 
-        // Hull — colour shifts toward red with rage, top-lit gradient + dark outline instead
-        // of a flat fill so a hull this large actually reads as modeled plate, not a decal.
+        // Hull colour shifts toward red with rage.
         val r = (70 + 120 * damage).toInt().coerceIn(0, 255)
         val hullBase = Color.rgb(r, 70, 90)
+
+        // Rear engine thrusters, drawn BEHIND the hull so the glow reads as escaping from
+        // past the ship's silhouette rather than sitting on top of it — the "just arrived
+        // from deep space" cue movie capital ships lead with.
+        renderEngineGlow(canvas, w, h)
+
+        // Hull — an asymmetric-looking jagged wedge (still bilaterally symmetric for readable
+        // gameplay) instead of a plain hexagon, so it reads as a layered alien warship rather
+        // than a geometric placeholder. Top-lit gradient + dark outline so a hull this large
+        // reads as modeled plate, not a flat decal.
         path.reset()
-        path.moveTo(0f, h * 0.55f)                 // nose down
-        path.lineTo(w * 0.5f, 0f)
-        path.lineTo(w * 0.34f, -h * 0.5f)
-        path.lineTo(-w * 0.34f, -h * 0.5f)
-        path.lineTo(-w * 0.5f, 0f)
+        path.moveTo(0f, h * 0.60f)                    // nose tip
+        path.lineTo(w * 0.10f, h * 0.42f)
+        path.lineTo(w * 0.20f, h * 0.46f)
+        path.lineTo(w * 0.34f, h * 0.20f)
+        path.lineTo(w * 0.50f, h * 0.14f)
+        path.lineTo(w * 0.46f, -h * 0.02f)
+        path.lineTo(w * 0.62f, -h * 0.10f)             // wingtip — widest point
+        path.lineTo(w * 0.56f, -h * 0.28f)
+        path.lineTo(w * 0.34f, -h * 0.40f)
+        path.lineTo(w * 0.30f, -h * 0.56f)
+        path.lineTo(w * 0.10f, -h * 0.50f)
+        path.lineTo(0f, -h * 0.58f)                    // rear spine notch
+        path.lineTo(-w * 0.10f, -h * 0.50f)
+        path.lineTo(-w * 0.30f, -h * 0.56f)
+        path.lineTo(-w * 0.34f, -h * 0.40f)
+        path.lineTo(-w * 0.56f, -h * 0.28f)
+        path.lineTo(-w * 0.62f, -h * 0.10f)             // wingtip — widest point
+        path.lineTo(-w * 0.46f, -h * 0.02f)
+        path.lineTo(-w * 0.50f, h * 0.14f)
+        path.lineTo(-w * 0.34f, h * 0.20f)
+        path.lineTo(-w * 0.20f, h * 0.46f)
+        path.lineTo(-w * 0.10f, h * 0.42f)
         path.close()
-        paint.shader = LinearGradient(0f, -h * 0.5f, 0f, h * 0.55f, lighten(hullBase, 0.25f), darken(hullBase, 0.4f), Shader.TileMode.CLAMP)
+        paint.shader = LinearGradient(0f, -h * 0.58f, 0f, h * 0.60f, lighten(hullBase, 0.25f), darken(hullBase, 0.4f), Shader.TileMode.CLAMP)
         canvas.drawPath(path, paint)
         paint.shader = null
         outlinePaint.color = darken(hullBase, 0.6f)
         canvas.drawPath(path, outlinePaint)
 
-        // Armor plating.
+        // Raised centerline spine plate — reads as a bridge/keel structure running the
+        // length of the hull, like a Star-Destroyer-style command spine.
         val armor = Color.rgb(50, 55, 75)
-        paint.shader = LinearGradient(0f, -h * 0.42f, 0f, h * 0.2f, lighten(armor, 0.3f), darken(armor, 0.3f), Shader.TileMode.CLAMP)
-        canvas.drawRoundRect(-w * 0.28f, -h * 0.42f, w * 0.28f, h * 0.2f, 10f, 10f, paint)
+        detailPath.reset()
+        detailPath.moveTo(0f, h * 0.30f)
+        detailPath.lineTo(w * 0.14f, h * 0.06f)
+        detailPath.lineTo(w * 0.11f, -h * 0.38f)
+        detailPath.lineTo(0f, -h * 0.48f)
+        detailPath.lineTo(-w * 0.11f, -h * 0.38f)
+        detailPath.lineTo(-w * 0.14f, h * 0.06f)
+        detailPath.close()
+        paint.shader = LinearGradient(0f, -h * 0.48f, 0f, h * 0.3f, lighten(armor, 0.3f), darken(armor, 0.3f), Shader.TileMode.CLAMP)
+        canvas.drawPath(detailPath, paint)
         paint.shader = null
+
+        // Greebled panel lines scattered across both wings — small dark rects read as access
+        // hatches/vents at this scale, the detail movie model-ships lean on heavily.
+        renderGreebles(canvas, w, h, hullBase)
 
         // Side pods (weapon housings).
         val pod = Color.rgb(90, 60, 70)
@@ -171,8 +213,14 @@ class Boss(private val spec: BossSpec) : Entity() {
         canvas.drawRoundRect(w * 0.3f, -h * 0.1f, w * 0.52f, h * 0.28f, 8f, 8f, paint)
         paint.shader = null
 
+        // Anti-collision nav lights along the wingtips/shoulders — the blinking red/green/
+        // white strobe convention every movie/TV spacecraft uses, and cheap to fake with a
+        // couple of sine-timed dots.
+        renderNavLights(canvas, w, h)
+
         // Core weak point — pulses, brighter in later phases. Soft outer bloom + hot white
-        // center reads as an actual glowing reactor, not a flat dot.
+        // center reads as an actual glowing reactor (a Death-Star-exhaust-port beat), not a
+        // flat dot.
         val pulse = 0.6f + 0.4f * sin(age * (3f + phase)).toFloat()
         val coreColor = when (phase) {
             1 -> spec.coreColor
@@ -208,5 +256,59 @@ class Boss(private val spec: BossSpec) : Entity() {
             paint.alpha = 255
         }
         canvas.restore()
+    }
+
+    private fun renderEngineGlow(canvas: Canvas, w: Float, h: Float) {
+        val pulse = 0.7f + 0.3f * sin(age * 6f)
+        val ports = floatArrayOf(-w * 0.16f, 0f, w * 0.16f)
+        for (ex in ports) {
+            val ey = -h * 0.60f
+            paint.shader = RadialGradient(ex, ey, 24f * pulse, Color.argb(220, 150, 205, 255), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+            canvas.drawCircle(ex, ey, 24f * pulse, paint)
+        }
+        paint.shader = null
+    }
+
+    private fun renderGreebles(canvas: Canvas, w: Float, h: Float, hullBase: Int) {
+        // (fx, fy) fractions of half-width/half-height, mirrored across the centerline; (fw, fh)
+        // fractions of full width/height. A fixed hand-placed set, not random — deterministic
+        // ship detail, not gameplay-relevant noise.
+        val spots = arrayOf(
+            floatArrayOf(0.20f, -0.34f, 0.09f, 0.05f),
+            floatArrayOf(0.38f, -0.14f, 0.08f, 0.045f),
+            floatArrayOf(0.44f, 0.06f, 0.07f, 0.05f),
+            floatArrayOf(0.24f, 0.30f, 0.06f, 0.04f),
+            floatArrayOf(0.14f, -0.50f, 0.08f, 0.035f)
+        )
+        greeblePaint.color = darken(hullBase, 0.55f)
+        greeblePaint.alpha = 130
+        for (s in spots) {
+            val gx = s[0] * w; val gy = s[1] * h; val gw = s[2] * w; val gh = s[3] * h
+            canvas.drawRect(gx - gw / 2f, gy - gh / 2f, gx + gw / 2f, gy + gh / 2f, greeblePaint)
+            canvas.drawRect(-gx - gw / 2f, gy - gh / 2f, -gx + gw / 2f, gy + gh / 2f, greeblePaint)
+        }
+        greeblePaint.alpha = 255
+    }
+
+    private fun renderNavLights(canvas: Canvas, w: Float, h: Float) {
+        // wingtip (red, slow blink), forward shoulder (green, offset blink), rear spine (white strobe).
+        val wingtipOn = ((age * 1.6f).toInt() % 2) == 0
+        val shoulderOn = ((age * 1.6f + 1f).toInt() % 2) == 0
+        val strobe = ((sin(age * 9f) + 1f) / 2f).coerceIn(0f, 1f)
+
+        lightPaint.color = Color.rgb(255, 50, 50)
+        lightPaint.alpha = if (wingtipOn) 255 else 40
+        canvas.drawCircle(w * 0.62f, -h * 0.10f, 4f, lightPaint)
+        canvas.drawCircle(-w * 0.62f, -h * 0.10f, 4f, lightPaint)
+
+        lightPaint.color = Color.rgb(70, 255, 110)
+        lightPaint.alpha = if (shoulderOn) 255 else 40
+        canvas.drawCircle(w * 0.50f, h * 0.14f, 3.5f, lightPaint)
+        canvas.drawCircle(-w * 0.50f, h * 0.14f, 3.5f, lightPaint)
+
+        lightPaint.color = Color.WHITE
+        lightPaint.alpha = (90 + 165 * strobe).toInt().coerceIn(0, 255)
+        canvas.drawCircle(0f, -h * 0.58f, 3.5f, lightPaint)
+        lightPaint.alpha = 255
     }
 }

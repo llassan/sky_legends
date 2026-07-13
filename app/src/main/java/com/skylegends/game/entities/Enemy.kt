@@ -36,6 +36,7 @@ class Enemy(val spec: EnemySpec) : Entity() {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
     private val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2f; alpha = 150 }
+    private val detailPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private fun lighten(c: Int, amt: Float): Int {
         val r = (Color.red(c) + (255 - Color.red(c)) * amt).toInt().coerceIn(0, 255)
@@ -204,6 +205,19 @@ class Enemy(val spec: EnemySpec) : Entity() {
         path.reset()
         path.moveTo(w / 2f, 0f); path.lineTo(w * 0.72f, -h * 0.18f); path.lineTo(w * 0.3f, -h * 0.2f); path.close()
         c.drawPath(path, paint)
+        // Saucer rim ring — a thin stroked skirt, the alien-scout silhouette cue.
+        detailPaint.style = Paint.Style.STROKE
+        detailPaint.strokeWidth = 1.6f
+        detailPaint.color = spec.accentColor
+        detailPaint.alpha = 140
+        c.drawOval(-w * 0.5f, -h * 0.32f, w * 0.5f, h * 0.32f, detailPaint)
+        detailPaint.style = Paint.Style.FILL
+        // Twin rivet lights, softly pulsing.
+        detailPaint.color = Color.WHITE
+        detailPaint.alpha = (110 + 100f * ((sin(age * 5f) + 1f) / 2f)).toInt().coerceIn(0, 255)
+        c.drawCircle(-w * 0.30f, 0f, 2.2f, detailPaint)
+        c.drawCircle(w * 0.30f, 0f, 2.2f, detailPaint)
+        detailPaint.alpha = 255
         // Core eye — glowing radial "iris" instead of a flat dot.
         paint.shader = RadialGradient(0f, 0f, w * 0.14f, Color.rgb(255, 200, 190), Color.rgb(200, 40, 40), Shader.TileMode.CLAMP)
         c.drawCircle(0f, 0f, w * 0.14f, paint)
@@ -223,6 +237,19 @@ class Enemy(val spec: EnemySpec) : Entity() {
         path.reset()
         path.moveTo(0f, h / 2f); path.lineTo(w * 0.14f, -h * 0.1f); path.lineTo(-w * 0.14f, -h * 0.1f); path.close()
         c.drawPath(path, paint)
+        // Spine panel line for surface detail.
+        detailPaint.style = Paint.Style.STROKE
+        detailPaint.strokeWidth = 1.2f
+        detailPaint.color = darken(spec.bodyColor, 0.4f)
+        detailPaint.alpha = 120
+        c.drawLine(0f, -h * 0.42f, 0f, h * 0.32f, detailPaint)
+        detailPaint.style = Paint.Style.FILL
+        detailPaint.alpha = 255
+        // Tail thruster flicker — the rear (tail) is -y since the nose points down at +y.
+        val flicker = 0.6f + 0.4f * sin(age * 14f)
+        paint.shader = RadialGradient(0f, -h * 0.46f, 8f * flicker, Color.argb(220, 255, 210, 150), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        c.drawCircle(0f, -h * 0.46f, 8f * flicker, paint)
+        paint.shader = null
     }
 
     private fun renderGunship(c: Canvas, w: Float, h: Float) {
@@ -232,10 +259,22 @@ class Enemy(val spec: EnemySpec) : Entity() {
         paint.color = spec.accentColor
         c.drawRect(-w * 0.34f, h * 0.2f, -w * 0.2f, h * 0.5f, paint)
         c.drawRect(w * 0.2f, h * 0.2f, w * 0.34f, h * 0.5f, paint)
+        // Greebled panel lines flanking the bridge.
+        detailPaint.color = darken(spec.bodyColor, 0.4f)
+        detailPaint.alpha = 120
+        c.drawRect(-w * 0.12f, -h * 0.2f, -w * 0.02f, -h * 0.1f, detailPaint)
+        c.drawRect(w * 0.02f, -h * 0.2f, w * 0.12f, -h * 0.1f, detailPaint)
+        detailPaint.alpha = 255
         // Bridge — glassy highlight.
         paint.shader = RadialGradient(-w * 0.03f, -h * 0.08f, w * 0.14f, Color.WHITE, Color.rgb(255, 190, 110), Shader.TileMode.CLAMP)
         c.drawCircle(0f, -h * 0.05f, w * 0.12f, paint)
         paint.shader = null
+        // Blinking hazard light beneath the bridge.
+        val on = ((age * 3f).toInt() % 2) == 0
+        detailPaint.color = Color.rgb(255, 60, 60)
+        detailPaint.alpha = if (on) 255 else 60
+        c.drawCircle(0f, h * 0.28f, 2.5f, detailPaint)
+        detailPaint.alpha = 255
     }
 
     private fun renderTurret(c: Canvas, w: Float, @Suppress("UNUSED_PARAMETER") h: Float) {
@@ -249,6 +288,15 @@ class Enemy(val spec: EnemySpec) : Entity() {
         }
         path.close()
         shadedFill(c, path, spec.bodyColor, -r, r)
+        // Pulsing warning ring around the platform rim.
+        val pulse = (sin(age * 4f) + 1f) / 2f
+        detailPaint.style = Paint.Style.STROKE
+        detailPaint.strokeWidth = 2f
+        detailPaint.color = Color.rgb(255, 80, 80)
+        detailPaint.alpha = (70 + 110 * pulse).toInt().coerceIn(0, 255)
+        c.drawCircle(0f, 0f, w * 0.46f, detailPaint)
+        detailPaint.style = Paint.Style.FILL
+        detailPaint.alpha = 255
         // Rotating barrel ring.
         paint.color = spec.accentColor
         c.drawCircle(0f, 0f, w * 0.24f, paint)
