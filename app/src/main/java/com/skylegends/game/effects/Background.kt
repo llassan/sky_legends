@@ -40,11 +40,23 @@ class Background {
     )
 
     /** One soft blob; a nebula cluster is several of these layered together for a turbulent,
-     * wispy-cloud look instead of a couple of visibly separate circles. */
+     * wispy-cloud look instead of a couple of visibly separate circles. [blobs]/[coreColor] are
+     * regenerated (not just repositioned) each time the cluster re-enters, so a reappearing
+     * cluster never reads as "the same cloud" sliding back into view. */
     private class Blob(val dx: Float, val dy: Float, val r: Float, val color: Int, val alphaScale: Float)
-    private class NebulaCluster(var x: Float, var y: Float, val speed: Float, val blobs: List<Blob>, val coreColor: Int)
+    private class NebulaCluster(var x: Float, var y: Float, val speed: Float, var blobs: List<Blob>, var coreColor: Int)
 
-    private class Planet(var x: Float, var y: Float, val r: Float, val speed: Float, val lit: Int, val shadow: Int, val ringed: Boolean)
+    /** A planet is a one-shot flyby, not a fixed prop: it spawns small & distant at the top,
+     * grows as it "approaches" ([scale] climbing toward 1), then is culled once fully past —
+     * never teleported back to the top, so it can never be caught reappearing mid-screen. */
+    private class Planet(
+        var x: Float, var y: Float, val baseR: Float, val speed: Float,
+        val lit: Int, val shadow: Int, val ringed: Boolean
+    ) { var scale = 0.32f }
+
+    /** A single, near-motionless distant galaxy silhouette — astronomically far enough away
+     * that it never completes a lap in one sector, so unlike planets it's fine to just drift. */
+    private class Galaxy(var x: Float, var y: Float, val r: Float, val speed: Float, val color: Int, val tilt: Float)
 
     private class ShootingStar(var x: Float, var y: Float, val vx: Float, val vy: Float, var life: Float, val maxLife: Float)
 
@@ -56,8 +68,11 @@ class Background {
     private val heroStars = ArrayList<HeroStar>()
     private val nebulae = ArrayList<NebulaCluster>()
     private val planets = ArrayList<Planet>()
+    private val galaxies = ArrayList<Galaxy>()
     private val shootingStars = ArrayList<ShootingStar>()
     private var shootingStarTimer = 6f
+    private var planetSpawnTimer = 0f
+    private var maxConcurrentPlanets = 0
 
     // Dense ambient particle field, drawn in one batched call. Position storage is reused
     // across themes; only color/motion/render style change with [DustMode].
@@ -85,6 +100,7 @@ class Background {
     private val planetDetailPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val planetClipPath = Path()
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val galaxyPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val shootPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val flashPaint = Paint()
@@ -131,37 +147,60 @@ class Background {
         }
 
         nebulae.clear()
-        val palette = theme.nebulaColors
         repeat(theme.nebulaCount) {
-            // Several overlapping blobs of varying size/density read as a turbulent wisp of
-            // gas rather than a couple of visibly distinct circles.
-            val blobs = List(5 + rnd.nextInt(4)) { j ->
-                Blob(
-                    (rnd.nextFloat() - 0.5f) * 260f, (rnd.nextFloat() - 0.5f) * 190f,
-                    60f + rnd.nextFloat() * 160f, palette[j % palette.size],
-                    0.5f + rnd.nextFloat() * 0.6f
-                )
-            }
             nebulae.add(
                 NebulaCluster(
                     rnd.nextFloat() * Constants.GAME_WIDTH, rnd.nextFloat() * Constants.GAME_HEIGHT,
-                    10f + rnd.nextFloat() * 14f, blobs, palette[0]
+                    10f + rnd.nextFloat() * 14f, makeBlobs(), theme.nebulaColors[0]
                 )
             )
         }
 
+        // Planets no longer pre-populate as a fixed set — they spawn one at a time (see
+        // [spawnPlanet]) and get culled once they've fully passed, so a sector never shows the
+        // same body cycling through the same spot.
         planets.clear()
-        repeat(theme.planetCount) { i ->
-            val (lit, shadow) = theme.planetColors[i % theme.planetColors.size]
-            planets.add(
-                Planet(
-                    Constants.GAME_WIDTH * (0.15f + rnd.nextFloat() * 0.7f),
-                    Constants.GAME_HEIGHT * (0.1f + rnd.nextFloat() * 0.6f),
-                    24f + rnd.nextFloat() * 24f, Constants.SCROLL_SPEED * (0.35f + rnd.nextFloat() * 0.45f),
-                    lit, shadow, ringed = i == 0
+        maxConcurrentPlanets = theme.planetCount
+        planetSpawnTimer = if (theme.planetCount > 0) 1.5f + rnd.nextFloat() * 2.5f else Float.MAX_VALUE
+
+        galaxies.clear()
+        theme.galaxyColor?.let { color ->
+            galaxies.add(
+                Galaxy(
+                    rnd.nextFloat() * Constants.GAME_WIDTH,
+                    Constants.GAME_HEIGHT * (0.1f + rnd.nextFloat() * 0.7f),
+                    110f + rnd.nextFloat() * 70f, 3f + rnd.nextFloat() * 5f,
+                    color, -25f + rnd.nextFloat() * 50f
                 )
             )
         }
+    }
+
+    /** Several overlapping blobs of varying size/density read as a turbulent wisp of gas rather
+     * than a couple of visibly distinct circles. Called both when a sector is configured and
+     * whenever a cluster re-enters, so repeats never look like the exact same cloud. */
+    private fun makeBlobs(): List<Blob> {
+        val palette = theme.nebulaColors
+        return List(5 + rnd.nextInt(4)) { j ->
+            Blob(
+                (rnd.nextFloat() - 0.5f) * 260f, (rnd.nextFloat() - 0.5f) * 190f,
+                60f + rnd.nextFloat() * 160f, palette[rnd.nextInt(palette.size)],
+                0.5f + rnd.nextFloat() * 0.6f
+            )
+        }
+    }
+
+    private fun spawnPlanet() {
+        if (theme.planetColors.isEmpty()) return
+        val (lit, shadow) = theme.planetColors[rnd.nextInt(theme.planetColors.size)]
+        val r = 20f + rnd.nextFloat() * 22f
+        planets.add(
+            Planet(
+                Constants.GAME_WIDTH * (0.12f + rnd.nextFloat() * 0.76f), -r,
+                r, Constants.SCROLL_SPEED * (0.28f + rnd.nextFloat() * 0.35f),
+                lit, shadow, ringed = rnd.nextFloat() < 0.35f
+            )
+        )
     }
 
     private fun tintFor(warmth: Float): Int {
@@ -192,7 +231,12 @@ class Background {
 
         for (n in nebulae) {
             n.y += n.speed * dt
-            if (n.y - 260f > Constants.GAME_HEIGHT) { n.y = -260f; n.x = rnd.nextFloat() * Constants.GAME_WIDTH }
+            if (n.y - 260f > Constants.GAME_HEIGHT) {
+                // Re-entering as a fresh shape/palette pick (not just a new position) is what
+                // keeps a long flight from reading as the same handful of clouds looping.
+                n.y = -260f; n.x = rnd.nextFloat() * Constants.GAME_WIDTH
+                n.blobs = makeBlobs(); n.coreColor = theme.nebulaColors[rnd.nextInt(theme.nebulaColors.size)]
+            }
         }
         for (s in stars) {
             s.y += s.speed * dt
@@ -202,9 +246,24 @@ class Background {
             h.y += h.speed * dt
             if (h.y > Constants.GAME_HEIGHT) { h.y = 0f; h.x = rnd.nextFloat() * Constants.GAME_WIDTH }
         }
+
+        // Planets fly past once and are gone — they grow as they "approach" (both size and
+        // speed scale up with them) rather than sliding through at a constant flat size, then
+        // get culled once fully off-screen instead of teleporting back to the top.
         for (p in planets) {
-            p.y += p.speed * dt
-            if (p.y - p.r > Constants.GAME_HEIGHT) { p.y = -p.r; p.x = rnd.nextFloat() * Constants.GAME_WIDTH }
+            p.scale = (p.scale + dt * 0.05f).coerceAtMost(1.2f)
+            p.y += p.speed * p.scale * dt
+        }
+        planets.removeAll { it.y - it.baseR * it.scale > Constants.GAME_HEIGHT + 60f }
+        planetSpawnTimer -= dt
+        if (planetSpawnTimer <= 0f && planets.size < maxConcurrentPlanets) {
+            planetSpawnTimer = 9f + rnd.nextFloat() * 11f
+            spawnPlanet()
+        }
+
+        for (g in galaxies) {
+            g.y += g.speed * dt
+            if (g.y - g.r * 2f > Constants.GAME_HEIGHT) { g.y = -g.r * 2f; g.x = rnd.nextFloat() * Constants.GAME_WIDTH }
         }
         updateDust(dt)
 
@@ -262,6 +321,7 @@ class Background {
     fun render(canvas: Canvas) {
         canvas.drawRect(0f, 0f, Constants.GAME_WIDTH, Constants.GAME_HEIGHT, skyPaint)
 
+        renderGalaxies(canvas)
         renderNebulae(canvas)
         renderHorizonGlow(canvas)
         if (theme.starVisibility > 0.02f) renderStars(canvas)
@@ -360,6 +420,7 @@ class Background {
 
     private fun renderPlanets(canvas: Canvas) {
         for (p in planets) {
+            val r = p.baseR * p.scale
             if (p.ringed) {
                 ringPaint.color = Color.argb(120, 230, 200, 170)
                 ringPaint.strokeWidth = 5f
@@ -367,41 +428,65 @@ class Background {
                 canvas.translate(p.x, p.y)
                 canvas.rotate(-18f)
                 canvas.scale(1f, 0.38f)
-                canvas.drawCircle(0f, 0f, p.r * 1.85f, ringPaint)
+                canvas.drawCircle(0f, 0f, r * 1.85f, ringPaint)
                 canvas.restore()
             }
 
             // Soft atmosphere rim glow, just outside the sphere.
             planetPaint.shader = RadialGradient(
-                p.x, p.y, p.r * 1.35f, Color.argb(85, Color.red(p.lit), Color.green(p.lit), Color.blue(p.lit)),
+                p.x, p.y, r * 1.35f, Color.argb(85, Color.red(p.lit), Color.green(p.lit), Color.blue(p.lit)),
                 Color.TRANSPARENT, Shader.TileMode.CLAMP
             )
-            canvas.drawCircle(p.x, p.y, p.r * 1.35f, planetPaint)
+            canvas.drawCircle(p.x, p.y, r * 1.35f, planetPaint)
 
             // Base sphere shading (lit hemisphere -> shadow).
-            planetPaint.shader = RadialGradient(p.x - p.r * 0.35f, p.y - p.r * 0.35f, p.r * 1.6f, p.lit, p.shadow, Shader.TileMode.CLAMP)
-            canvas.drawCircle(p.x, p.y, p.r, planetPaint)
+            planetPaint.shader = RadialGradient(p.x - r * 0.35f, p.y - r * 0.35f, r * 1.6f, p.lit, p.shadow, Shader.TileMode.CLAMP)
+            canvas.drawCircle(p.x, p.y, r, planetPaint)
 
             // Surface bands + terminator shadow, clipped to the sphere for gas-giant-style detail.
             canvas.save()
             planetClipPath.reset()
-            planetClipPath.addCircle(p.x, p.y, p.r, Path.Direction.CW)
+            planetClipPath.addCircle(p.x, p.y, r, Path.Direction.CW)
             canvas.clipPath(planetClipPath)
             planetDetailPaint.shader = null
             for (b in 0 until 3) {
-                val bandY = p.y + (b - 1) * p.r * 0.42f
+                val bandY = p.y + (b - 1) * r * 0.42f
                 planetDetailPaint.color = if (b % 2 == 0) darken(p.shadow, 0.2f) else darken(p.lit, 0.1f)
                 planetDetailPaint.alpha = 55
-                canvas.drawRect(p.x - p.r, bandY - p.r * 0.12f, p.x + p.r, bandY + p.r * 0.12f, planetDetailPaint)
+                canvas.drawRect(p.x - r, bandY - r * 0.12f, p.x + r, bandY + r * 0.12f, planetDetailPaint)
             }
             planetDetailPaint.alpha = 255
             planetPaint.shader = RadialGradient(
-                p.x + p.r * 0.5f, p.y + p.r * 0.5f, p.r * 1.3f, Color.argb(150, 0, 0, 0), Color.TRANSPARENT, Shader.TileMode.CLAMP
+                p.x + r * 0.5f, p.y + r * 0.5f, r * 1.3f, Color.argb(150, 0, 0, 0), Color.TRANSPARENT, Shader.TileMode.CLAMP
             )
-            canvas.drawCircle(p.x, p.y, p.r, planetPaint)
+            canvas.drawCircle(p.x, p.y, r, planetPaint)
             canvas.restore()
         }
         planetPaint.shader = null
+    }
+
+    /** Distant galaxy: a tilted, flattened glow disc (viewed edge-on-ish) with a brighter core
+     * and a couple of faint elongated arm streaks — enough to read as a spiral silhouette
+     * without needing real arm geometry. Barely drifts; see [Galaxy]. */
+    private fun renderGalaxies(canvas: Canvas) {
+        for (g in galaxies) {
+            canvas.save()
+            canvas.translate(g.x, g.y)
+            canvas.rotate(g.tilt)
+            canvas.scale(1f, 0.32f)
+            galaxyPaint.shader = RadialGradient(0f, 0f, g.r, g.color, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+            canvas.drawCircle(0f, 0f, g.r, galaxyPaint)
+
+            galaxyPaint.shader = null
+            galaxyPaint.color = Color.argb(Color.alpha(g.color) / 2, Color.red(g.color), Color.green(g.color), Color.blue(g.color))
+            canvas.drawOval(-g.r * 0.9f, -g.r * 0.12f, g.r * 0.15f, g.r * 0.12f, galaxyPaint)
+            canvas.drawOval(-g.r * 0.15f, -g.r * 0.12f, g.r * 0.9f, g.r * 0.12f, galaxyPaint)
+            canvas.restore()
+
+            galaxyPaint.shader = RadialGradient(g.x, g.y, g.r * 0.22f, Color.WHITE, g.color, Shader.TileMode.CLAMP)
+            canvas.drawCircle(g.x, g.y, g.r * 0.2f, galaxyPaint)
+        }
+        galaxyPaint.shader = null
     }
 
     private fun renderDust(canvas: Canvas) {

@@ -20,7 +20,10 @@ data class SpaceTheme(
     val dustColor: Int,
     val dustMode: DustMode,
     val horizonGlow: Int?,
-    val lightning: Boolean
+    val lightning: Boolean,
+    /** Color of a single, near-static distant galaxy silhouette; null where the sky is too
+     * hazy/overcast/close for one to plausibly be visible. */
+    val galaxyColor: Int? = null
 )
 
 /** One theme per campaign sector (see [com.skylegends.game.level.LevelLibrary]'s sector names). */
@@ -36,12 +39,18 @@ object SpaceThemeCatalog {
             starVisibility = 1f,
             nebulaColors = listOf(Color.argb(90, 90, 130, 255), Color.argb(60, 130, 80, 220), Color.argb(70, 90, 160, 255)),
             nebulaCount = 4,
-            planetColors = listOf(Color.rgb(255, 210, 150) to Color.rgb(120, 60, 40), Color.rgb(150, 200, 255) to Color.rgb(40, 60, 110)),
+            planetColors = listOf(
+                Color.rgb(255, 210, 150) to Color.rgb(120, 60, 40),
+                Color.rgb(150, 200, 255) to Color.rgb(40, 60, 110),
+                Color.rgb(200, 190, 180) to Color.rgb(70, 65, 60),
+                Color.rgb(210, 140, 255) to Color.rgb(60, 30, 90)
+            ),
             planetCount = 2,
             dustColor = Color.argb(70, 200, 210, 255),
             dustMode = DustMode.SPARKLE,
             horizonGlow = null,
-            lightning = false
+            lightning = false,
+            galaxyColor = Color.argb(120, 150, 170, 255)
         ),
         // 1 — CLOUD CITY SIEGE: high above a lit city at dusk.
         SpaceTheme(
@@ -84,12 +93,16 @@ object SpaceThemeCatalog {
             starVisibility = 0.6f,
             nebulaColors = listOf(Color.argb(75, 70, 180, 190), Color.argb(55, 50, 140, 170), Color.argb(60, 90, 160, 180)),
             nebulaCount = 3,
-            planetColors = listOf(Color.rgb(190, 210, 215) to Color.rgb(70, 90, 95)),
+            planetColors = listOf(
+                Color.rgb(190, 210, 215) to Color.rgb(70, 90, 95),
+                Color.rgb(140, 220, 200) to Color.rgb(30, 80, 70)
+            ),
             planetCount = 1,
             dustColor = Color.argb(70, 170, 220, 225),
             dustMode = DustMode.SPARKLE,
             horizonGlow = Color.argb(90, 60, 170, 180),
-            lightning = false
+            lightning = false,
+            galaxyColor = Color.argb(100, 120, 220, 210)
         ),
         // 4 — VOLCANIC RIDGE: ash-hazed, ember-lit.
         SpaceTheme(
@@ -116,12 +129,17 @@ object SpaceThemeCatalog {
             starVisibility = 0.9f,
             nebulaColors = listOf(Color.argb(80, 110, 255, 210), Color.argb(60, 120, 200, 255), Color.argb(65, 180, 140, 255)),
             nebulaCount = 3,
-            planetColors = listOf(Color.rgb(220, 240, 255) to Color.rgb(90, 130, 170)),
+            planetColors = listOf(
+                Color.rgb(220, 240, 255) to Color.rgb(90, 130, 170),
+                Color.rgb(180, 200, 255) to Color.rgb(60, 70, 140),
+                Color.rgb(255, 250, 240) to Color.rgb(140, 150, 170)
+            ),
             planetCount = 1,
             dustColor = Color.argb(160, 230, 245, 255),
             dustMode = DustMode.SNOW,
             horizonGlow = Color.argb(90, 120, 255, 220),
-            lightning = false
+            lightning = false,
+            galaxyColor = Color.argb(130, 160, 220, 255)
         ),
         // 6 — STRATOSPHERE BREACH: atmosphere thinning into space.
         SpaceTheme(
@@ -132,12 +150,17 @@ object SpaceThemeCatalog {
             starVisibility = 0.6f,
             nebulaColors = listOf(Color.argb(75, 140, 190, 255), Color.argb(55, 200, 220, 255)),
             nebulaCount = 3,
-            planetColors = listOf(Color.rgb(200, 225, 255) to Color.rgb(70, 100, 150), Color.rgb(255, 235, 210) to Color.rgb(140, 110, 80)),
+            planetColors = listOf(
+                Color.rgb(200, 225, 255) to Color.rgb(70, 100, 150),
+                Color.rgb(255, 235, 210) to Color.rgb(140, 110, 80),
+                Color.rgb(210, 255, 230) to Color.rgb(60, 130, 100)
+            ),
             planetCount = 2,
             dustColor = Color.argb(85, 220, 235, 255),
             dustMode = DustMode.SPARKLE,
             horizonGlow = Color.argb(130, 150, 200, 255),
-            lightning = false
+            lightning = false,
+            galaxyColor = Color.argb(110, 200, 220, 255)
         ),
         // 7 — THE LAST SKY: dramatic crimson finale.
         SpaceTheme(
@@ -148,12 +171,17 @@ object SpaceThemeCatalog {
             starVisibility = 0.8f,
             nebulaColors = listOf(Color.argb(85, 220, 40, 60), Color.argb(60, 120, 20, 60), Color.argb(65, 180, 50, 90)),
             nebulaCount = 4,
-            planetColors = listOf(Color.rgb(200, 80, 80) to Color.rgb(40, 10, 10), Color.rgb(120, 60, 90) to Color.rgb(20, 8, 16)),
+            planetColors = listOf(
+                Color.rgb(200, 80, 80) to Color.rgb(40, 10, 10),
+                Color.rgb(120, 60, 90) to Color.rgb(20, 8, 16),
+                Color.rgb(230, 150, 90) to Color.rgb(60, 20, 10)
+            ),
             planetCount = 2,
             dustColor = Color.argb(95, 255, 160, 160),
             dustMode = DustMode.SPARKLE,
             horizonGlow = Color.argb(100, 200, 40, 60),
-            lightning = false
+            lightning = false,
+            galaxyColor = Color.argb(130, 220, 70, 90)
         )
     )
 
