@@ -2,8 +2,11 @@ package com.skylegends.game.entities
 
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import com.skylegends.game.bosses.BossSpec
 import com.skylegends.game.utils.Constants
 import kotlin.math.atan2
@@ -39,6 +42,19 @@ class Boss(private val spec: BossSpec) : Entity() {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
+    private val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 3f; alpha = 170 }
+
+    private fun lighten(c: Int, amt: Float): Int {
+        val r = (Color.red(c) + (255 - Color.red(c)) * amt).toInt().coerceIn(0, 255)
+        val g = (Color.green(c) + (255 - Color.green(c)) * amt).toInt().coerceIn(0, 255)
+        val b = (Color.blue(c) + (255 - Color.blue(c)) * amt).toInt().coerceIn(0, 255)
+        return Color.rgb(r, g, b)
+    }
+
+    private fun darken(c: Int, amt: Float): Int {
+        val f = 1f - amt
+        return Color.rgb((Color.red(c) * f).toInt(), (Color.green(c) * f).toInt(), (Color.blue(c) * f).toInt())
+    }
 
     fun spawn() {
         pos.set(Constants.GAME_WIDTH / 2f, -160f)
@@ -125,9 +141,10 @@ class Boss(private val spec: BossSpec) : Entity() {
         val w = 200f; val h = 150f
         val damage = 1f - (hp / maxHp).coerceIn(0f, 1f)
 
-        // Hull — colour shifts toward red with rage.
+        // Hull — colour shifts toward red with rage, top-lit gradient + dark outline instead
+        // of a flat fill so a hull this large actually reads as modeled plate, not a decal.
         val r = (70 + 120 * damage).toInt().coerceIn(0, 255)
-        paint.color = Color.rgb(r, 70, 90)
+        val hullBase = Color.rgb(r, 70, 90)
         path.reset()
         path.moveTo(0f, h * 0.55f)                 // nose down
         path.lineTo(w * 0.5f, 0f)
@@ -135,29 +152,44 @@ class Boss(private val spec: BossSpec) : Entity() {
         path.lineTo(-w * 0.34f, -h * 0.5f)
         path.lineTo(-w * 0.5f, 0f)
         path.close()
+        paint.shader = LinearGradient(0f, -h * 0.5f, 0f, h * 0.55f, lighten(hullBase, 0.25f), darken(hullBase, 0.4f), Shader.TileMode.CLAMP)
         canvas.drawPath(path, paint)
+        paint.shader = null
+        outlinePaint.color = darken(hullBase, 0.6f)
+        canvas.drawPath(path, outlinePaint)
 
         // Armor plating.
-        paint.color = Color.rgb(50, 55, 75)
+        val armor = Color.rgb(50, 55, 75)
+        paint.shader = LinearGradient(0f, -h * 0.42f, 0f, h * 0.2f, lighten(armor, 0.3f), darken(armor, 0.3f), Shader.TileMode.CLAMP)
         canvas.drawRoundRect(-w * 0.28f, -h * 0.42f, w * 0.28f, h * 0.2f, 10f, 10f, paint)
+        paint.shader = null
 
         // Side pods (weapon housings).
-        paint.color = Color.rgb(90, 60, 70)
+        val pod = Color.rgb(90, 60, 70)
+        paint.shader = LinearGradient(-w * 0.52f, 0f, w * 0.52f, 0f, lighten(pod, 0.2f), darken(pod, 0.3f), Shader.TileMode.CLAMP)
         canvas.drawRoundRect(-w * 0.52f, -h * 0.1f, -w * 0.3f, h * 0.28f, 8f, 8f, paint)
         canvas.drawRoundRect(w * 0.3f, -h * 0.1f, w * 0.52f, h * 0.28f, 8f, 8f, paint)
+        paint.shader = null
 
-        // Core weak point — pulses, brighter in later phases.
+        // Core weak point — pulses, brighter in later phases. Soft outer bloom + hot white
+        // center reads as an actual glowing reactor, not a flat dot.
         val pulse = 0.6f + 0.4f * sin(age * (3f + phase)).toFloat()
-        paint.color = when (phase) {
+        val coreColor = when (phase) {
             1 -> spec.coreColor
             2 -> Color.rgb(255, 200, 90)
             else -> Color.rgb(255, 90, 90)
         }
-        paint.alpha = (150 + 105 * pulse).toInt().coerceIn(0, 255)
-        canvas.drawCircle(0f, -h * 0.08f, 26f + 6f * pulse, paint)
+        val coreY = -h * 0.08f
+        paint.shader = RadialGradient(0f, coreY, 42f + 8f * pulse, coreColor, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        paint.alpha = (180 + 75 * pulse).toInt().coerceIn(0, 255)
+        canvas.drawCircle(0f, coreY, 42f + 8f * pulse, paint)
+        paint.shader = null
         paint.alpha = 255
+        paint.shader = RadialGradient(0f, coreY, 26f + 6f * pulse, Color.WHITE, coreColor, Shader.TileMode.CLAMP)
+        canvas.drawCircle(0f, coreY, 26f + 6f * pulse, paint)
+        paint.shader = null
         paint.color = Color.WHITE
-        canvas.drawCircle(0f, -h * 0.08f, 11f, paint)
+        canvas.drawCircle(0f, coreY, 11f, paint)
 
         // Battle damage: smoke puffs as HP drops.
         if (damage > 0.4f) {

@@ -2,8 +2,11 @@ package com.skylegends.game.entities
 
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import com.skylegends.game.aircraft.AbilityType
 import com.skylegends.game.aircraft.AircraftCatalog
 import com.skylegends.game.aircraft.AircraftSpec
@@ -63,6 +66,7 @@ class Player : Entity() {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
+    private val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2.2f; alpha = 160 }
 
     /** Configure hull + stats for a run (upgrades already folded into the passed values). */
     fun configure(
@@ -235,20 +239,24 @@ class Player : Entity() {
         canvas.restore()
 
         if (shield > 0f) {
-            paint.color = Color.rgb(120, 200, 255)
-            paint.alpha = (60 + 90 * (shield / maxShield)).toInt().coerceIn(0, 200)
+            val frac = shield / maxShield
+            paint.shader = RadialGradient(
+                pos.x, pos.y, Constants.PLAYER_WIDTH * 0.85f,
+                Color.argb((40 + 60 * frac).toInt(), 170, 220, 255), Color.argb((90 + 90 * frac).toInt(), 90, 170, 255),
+                Shader.TileMode.CLAMP
+            )
             canvas.drawCircle(pos.x, pos.y, Constants.PLAYER_WIDTH * 0.85f, paint)
-            paint.alpha = 255
+            paint.shader = null
         }
     }
 
     private fun renderFlame(canvas: Canvas, h: Float) {
         val flame = 0.7f + 0.3f * sin(flameFlicker.toDouble()).toFloat()
-        paint.color = spec.flameColor
-        paint.alpha = 200
+        paint.shader = LinearGradient(0f, h / 2f - 6f, 0f, h / 2f + 22f * flame, spec.flameColor, Color.argb(0, 255, 255, 255), Shader.TileMode.CLAMP)
         path.reset()
         path.moveTo(-8f, h / 2f - 6f); path.lineTo(0f, h / 2f + 22f * flame); path.lineTo(8f, h / 2f - 6f); path.close()
         canvas.drawPath(path, paint)
+        paint.shader = null
         paint.color = Color.rgb(255, 240, 200)
         paint.alpha = 230
         path.reset()
@@ -257,55 +265,86 @@ class Player : Entity() {
         paint.alpha = 255
     }
 
+    /** Fills [path] with a lit-to-shadow gradient of [base] instead of a flat color, then
+     * strokes a dark outline — the single biggest lever for reading as modeled hardware
+     * rather than a flat cutout. [topY]/[bottomY] set the light direction (lighter at top). */
+    private fun shadedFill(canvas: Canvas, path: Path, base: Int, topY: Float, bottomY: Float) {
+        paint.shader = LinearGradient(0f, topY, 0f, bottomY, lighten(base, 0.30f), darken(base, 0.35f), Shader.TileMode.CLAMP)
+        canvas.drawPath(path, paint)
+        paint.shader = null
+        outlinePaint.color = darken(base, 0.55f)
+        canvas.drawPath(path, outlinePaint)
+    }
+
+    private fun lighten(c: Int, amt: Float): Int {
+        val r = (Color.red(c) + (255 - Color.red(c)) * amt).toInt().coerceIn(0, 255)
+        val g = (Color.green(c) + (255 - Color.green(c)) * amt).toInt().coerceIn(0, 255)
+        val b = (Color.blue(c) + (255 - Color.blue(c)) * amt).toInt().coerceIn(0, 255)
+        return Color.rgb(r, g, b)
+    }
+
+    private fun darken(c: Int, amt: Float): Int {
+        val f = 1f - amt
+        return Color.rgb((Color.red(c) * f).toInt(), (Color.green(c) * f).toInt(), (Color.blue(c) * f).toInt())
+    }
+
+    /** Radial "glass" highlight for a cockpit/canopy instead of a flat-filled circle. */
+    private fun canopyGlass(canvas: Canvas, cx: Float, cy: Float, r: Float, tint: Int) {
+        paint.shader = RadialGradient(cx - r * 0.25f, cy - r * 0.3f, r * 1.3f, Color.WHITE, tint, Shader.TileMode.CLAMP)
+        canvas.drawCircle(cx, cy, r, paint)
+        paint.shader = null
+        outlinePaint.strokeWidth = 1.4f
+        outlinePaint.color = darken(tint, 0.4f)
+        canvas.drawCircle(cx, cy, r, outlinePaint)
+        outlinePaint.strokeWidth = 2.2f
+    }
+
     private fun renderDelta(canvas: Canvas) {
         // Vanguard — clean, balanced fighter. No bolt-on hardware: the plain baseline
         // silhouette the other two visibly add weapons pods onto.
         val w = Constants.PLAYER_WIDTH; val h = Constants.PLAYER_HEIGHT
-        paint.color = spec.wingColor
-        wing(canvas, w, h, -1f); wing(canvas, w, h, 1f)
-        paint.color = spec.bodyColor
+        wingPath(path, w, h, -1f); shadedFill(canvas, path, spec.wingColor, -h * 0.1f, h * 0.34f)
+        wingPath(path, w, h, 1f); shadedFill(canvas, path, spec.wingColor, -h * 0.1f, h * 0.34f)
         path.reset()
         path.moveTo(0f, -h / 2f)
         path.lineTo(w * 0.20f, h * 0.30f); path.lineTo(w * 0.12f, h / 2f)
         path.lineTo(-w * 0.12f, h / 2f); path.lineTo(-w * 0.20f, h * 0.30f)
-        path.close(); canvas.drawPath(path, paint)
+        path.close(); shadedFill(canvas, path, spec.bodyColor, -h / 2f, h / 2f)
         paint.color = spec.accentColor
         path.reset()
         path.moveTo(0f, -h / 2f); path.lineTo(w * 0.06f, h * 0.1f); path.lineTo(-w * 0.06f, h * 0.1f); path.close()
         canvas.drawPath(path, paint)
-        canvas.drawCircle(0f, -h * 0.12f, w * 0.10f, paint)
+        canopyGlass(canvas, 0f, -h * 0.12f, w * 0.10f, spec.accentColor)
         renderHardware(canvas, w * 0.5f, h * 0.18f)
     }
 
-    private fun wing(canvas: Canvas, w: Float, h: Float, s: Float) {
-        path.reset()
-        path.moveTo(s * w / 2f, h * 0.18f)
-        path.lineTo(s * w * 0.16f, -h * 0.1f)
-        path.lineTo(s * w * 0.16f, h * 0.34f)
-        path.close(); canvas.drawPath(path, paint)
+    private fun wingPath(p: Path, w: Float, h: Float, s: Float): Path {
+        p.reset()
+        p.moveTo(s * w / 2f, h * 0.18f)
+        p.lineTo(s * w * 0.16f, -h * 0.1f)
+        p.lineTo(s * w * 0.16f, h * 0.34f)
+        p.close()
+        return p
     }
 
     private fun renderArrow(canvas: Canvas) {
         // Nova — sleek, narrow interceptor: long needle nose, sharply swept thin wings,
         // twin engine strakes. Visibly slimmer than the other two, not just recolored.
         val w = Constants.PLAYER_WIDTH * 0.92f; val h = Constants.PLAYER_HEIGHT * 1.1f
-        paint.color = spec.wingColor
         path.reset()
         path.moveTo(-w * 0.08f, -h * 0.10f); path.lineTo(-w * 0.64f, h * 0.46f)
         path.lineTo(-w * 0.30f, h * 0.40f); path.lineTo(-w * 0.08f, h * 0.14f)
-        path.close(); canvas.drawPath(path, paint)
+        path.close(); shadedFill(canvas, path, spec.wingColor, -h * 0.1f, h * 0.46f)
         path.reset()
         path.moveTo(w * 0.08f, -h * 0.10f); path.lineTo(w * 0.64f, h * 0.46f)
         path.lineTo(w * 0.30f, h * 0.40f); path.lineTo(w * 0.08f, h * 0.14f)
-        path.close(); canvas.drawPath(path, paint)
-        paint.color = spec.bodyColor
+        path.close(); shadedFill(canvas, path, spec.wingColor, -h * 0.1f, h * 0.46f)
         path.reset()
         path.moveTo(0f, -h * 0.58f)
         path.lineTo(w * 0.09f, h * 0.30f); path.lineTo(0f, h * 0.5f)
         path.lineTo(-w * 0.09f, h * 0.30f)
-        path.close(); canvas.drawPath(path, paint)
-        paint.color = spec.accentColor
-        canvas.drawCircle(0f, -h * 0.20f, w * 0.07f, paint)
+        path.close(); shadedFill(canvas, path, spec.bodyColor, -h * 0.58f, h * 0.5f)
+        canopyGlass(canvas, 0f, -h * 0.20f, w * 0.07f, spec.accentColor)
         paint.color = spec.flameColor
         paint.alpha = 140
         canvas.drawRect(-w * 0.10f, h * 0.32f, -w * 0.04f, h * 0.48f, paint)
@@ -318,17 +357,16 @@ class Player : Entity() {
         // Titan — broad, heavy bomber: wide integrated wing slabs, boxy central hull,
         // armor plating band. Noticeably wider and bulkier than Vanguard/Nova.
         val w = Constants.PLAYER_WIDTH * 1.4f; val h = Constants.PLAYER_HEIGHT * 0.96f
-        paint.color = spec.wingColor
-        canvas.drawRoundRect(-w * 0.58f, -h * 0.02f, -w * 0.18f, h * 0.40f, 8f, 8f, paint)
-        canvas.drawRoundRect(w * 0.18f, -h * 0.02f, w * 0.58f, h * 0.40f, 8f, 8f, paint)
-        paint.color = spec.bodyColor
+        path.reset(); path.addRoundRect(-w * 0.58f, -h * 0.02f, -w * 0.18f, h * 0.40f, 8f, 8f, Path.Direction.CW)
+        shadedFill(canvas, path, spec.wingColor, -h * 0.02f, h * 0.40f)
+        path.reset(); path.addRoundRect(w * 0.18f, -h * 0.02f, w * 0.58f, h * 0.40f, 8f, 8f, Path.Direction.CW)
+        shadedFill(canvas, path, spec.wingColor, -h * 0.02f, h * 0.40f)
         path.reset()
         path.moveTo(0f, -h / 2f)
         path.lineTo(w * 0.24f, h * 0.10f); path.lineTo(w * 0.20f, h * 0.5f)
         path.lineTo(-w * 0.20f, h * 0.5f); path.lineTo(-w * 0.24f, h * 0.10f)
-        path.close(); canvas.drawPath(path, paint)
-        paint.color = spec.accentColor
-        canvas.drawCircle(0f, -h * 0.14f, w * 0.10f, paint)
+        path.close(); shadedFill(canvas, path, spec.bodyColor, -h / 2f, h * 0.5f)
+        canopyGlass(canvas, 0f, -h * 0.14f, w * 0.10f, spec.accentColor)
         paint.color = spec.wingColor
         canvas.drawRect(-w * 0.14f, h * 0.16f, w * 0.14f, h * 0.22f, paint)
         renderHardware(canvas, w * 0.42f, h * 0.22f)

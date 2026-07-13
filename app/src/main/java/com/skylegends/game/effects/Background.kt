@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
@@ -19,11 +20,12 @@ import kotlin.random.Random
  * A deep-space backdrop, re-skinned per campaign sector via [SpaceTheme] so the scene visibly
  * evolves as the player advances — [configure] is called once at the start of every sector,
  * rebuilding the sky gradient, nebula/planet palettes, star visibility, and ambient particle
- * style ([DustMode]) for that sector's mood. The rendering engine underneath (twinkling
- * layered stars, glow-flare hero stars, screen-blended nebula clouds, shaded planets, rare
- * shooting stars) stays the same; only the theme data changes. Each visual layer owns a
- * dedicated [Paint] — nothing is shared across layers, so a config change on one (blend mode,
- * mask filter, shader) can never leak into another.
+ * style ([DustMode]) for that sector's mood. Every layer is built from several passes (soft
+ * glow + sharp core, atmosphere rim + terminator + surface bands, tapered diffraction spikes)
+ * rather than one flat shape, plus a closing vignette, so the scene reads with real depth
+ * instead of flat cutout shapes. Each visual layer owns a dedicated [Paint] — nothing is
+ * shared across layers, so a config change on one (blend mode, mask filter, shader) can never
+ * leak into another.
  */
 class Background {
 
@@ -37,9 +39,10 @@ class Background {
         val color: Int, val twinkleSpeed: Float, val twinklePhase: Float
     )
 
-    /** One soft blob; a nebula cluster is 2-4 of these drifting together. */
-    private class Blob(val dx: Float, val dy: Float, val r: Float, val color: Int)
-    private class NebulaCluster(var x: Float, var y: Float, val speed: Float, val blobs: List<Blob>)
+    /** One soft blob; a nebula cluster is several of these layered together for a turbulent,
+     * wispy-cloud look instead of a couple of visibly separate circles. */
+    private class Blob(val dx: Float, val dy: Float, val r: Float, val color: Int, val alphaScale: Float)
+    private class NebulaCluster(var x: Float, var y: Float, val speed: Float, val blobs: List<Blob>, val coreColor: Int)
 
     private class Planet(var x: Float, var y: Float, val r: Float, val speed: Float, val lit: Int, val shadow: Int, val ringed: Boolean)
 
@@ -69,6 +72,7 @@ class Background {
     private val skyPaint = Paint()
     private val dustPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
     private val starPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val starGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val heroGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         maskFilter = BlurMaskFilter(14f, BlurMaskFilter.Blur.NORMAL)
     }
@@ -78,10 +82,13 @@ class Background {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
     }
     private val planetPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val planetDetailPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val planetClipPath = Path()
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val shootPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val flashPaint = Paint()
+    private val vignettePaint = Paint()
 
     init {
         configure(0)
@@ -126,16 +133,19 @@ class Background {
         nebulae.clear()
         val palette = theme.nebulaColors
         repeat(theme.nebulaCount) {
-            val blobs = List(2 + rnd.nextInt(3)) { j ->
+            // Several overlapping blobs of varying size/density read as a turbulent wisp of
+            // gas rather than a couple of visibly distinct circles.
+            val blobs = List(5 + rnd.nextInt(4)) { j ->
                 Blob(
-                    (rnd.nextFloat() - 0.5f) * 220f, (rnd.nextFloat() - 0.5f) * 160f,
-                    90f + rnd.nextFloat() * 150f, palette[j % palette.size]
+                    (rnd.nextFloat() - 0.5f) * 260f, (rnd.nextFloat() - 0.5f) * 190f,
+                    60f + rnd.nextFloat() * 160f, palette[j % palette.size],
+                    0.5f + rnd.nextFloat() * 0.6f
                 )
             }
             nebulae.add(
                 NebulaCluster(
                     rnd.nextFloat() * Constants.GAME_WIDTH, rnd.nextFloat() * Constants.GAME_HEIGHT,
-                    10f + rnd.nextFloat() * 14f, blobs
+                    10f + rnd.nextFloat() * 14f, blobs, palette[0]
                 )
             )
         }
@@ -147,7 +157,7 @@ class Background {
                 Planet(
                     Constants.GAME_WIDTH * (0.15f + rnd.nextFloat() * 0.7f),
                     Constants.GAME_HEIGHT * (0.1f + rnd.nextFloat() * 0.6f),
-                    24f + rnd.nextFloat() * 24f, 5f + rnd.nextFloat() * 6f,
+                    24f + rnd.nextFloat() * 24f, Constants.SCROLL_SPEED * (0.35f + rnd.nextFloat() * 0.45f),
                     lit, shadow, ringed = i == 0
                 )
             )
@@ -161,6 +171,14 @@ class Background {
         val g = (cool.second + (warm.second - cool.second) * warmth).toInt()
         val b = (cool.third + (warm.third - cool.third) * warmth).toInt()
         return Color.rgb(r, g, b)
+    }
+
+    /** Blends [color] toward black by [amount] (0..1) — used for band/terminator shading. */
+    private fun darken(color: Int, amount: Float): Int {
+        val f = 1f - amount
+        return Color.rgb(
+            (Color.red(color) * f).toInt(), (Color.green(color) * f).toInt(), (Color.blue(color) * f).toInt()
+        )
     }
 
     private fun makeStar(speedScale: Float, size: Float, bright: Int) = Star(
@@ -253,6 +271,7 @@ class Background {
             renderShootingStars(canvas)
         }
         renderDust(canvas)
+        renderVignette(canvas)
 
         if (theme.lightning && lightningFlash > 0f) {
             flashPaint.color = Color.argb((lightningFlash * 130f).toInt().coerceIn(0, 255), 210, 225, 255)
@@ -265,10 +284,18 @@ class Background {
             for (b in n.blobs) {
                 val cx = n.x + b.dx; val cy = n.y + b.dy
                 nebulaPaint.shader = RadialGradient(cx, cy, b.r, b.color, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+                val alpha = Color.alpha(b.color)
+                nebulaPaint.alpha = (alpha * b.alphaScale).toInt().coerceIn(0, 255)
                 canvas.drawCircle(cx, cy, b.r, nebulaPaint)
             }
+            // Brighter, tighter core glow so each cluster reads as one coherent cloud with an
+            // internal hot spot, not just a pile of equal blobs.
+            nebulaPaint.shader = RadialGradient(n.x, n.y, 70f, n.coreColor, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+            nebulaPaint.alpha = 255
+            canvas.drawCircle(n.x, n.y, 70f, nebulaPaint)
         }
         nebulaPaint.shader = null
+        nebulaPaint.alpha = 255
     }
 
     private fun renderHorizonGlow(canvas: Canvas) {
@@ -285,8 +312,17 @@ class Background {
     private fun renderStars(canvas: Canvas) {
         for (s in stars) {
             val twinkle = 0.55f + 0.45f * sin(time * s.twinkleSpeed + s.twinklePhase)
-            starPaint.color = tintFor(s.warmth)
-            starPaint.alpha = (s.baseAlpha * twinkle * theme.starVisibility).toInt().coerceIn(0, 255)
+            val tint = tintFor(s.warmth)
+            val alpha = (s.baseAlpha * twinkle * theme.starVisibility).toInt().coerceIn(0, 255)
+            // Soft halo under the sharp core on the brighter/nearer stars — cheap two-circle
+            // bloom approximation, no blur filter needed at this volume.
+            if (s.size > 1.5f) {
+                starGlowPaint.color = tint
+                starGlowPaint.alpha = (alpha * 0.3f).toInt()
+                canvas.drawCircle(s.x, s.y, s.size * 2.4f, starGlowPaint)
+            }
+            starPaint.color = tint
+            starPaint.alpha = alpha
             canvas.drawCircle(s.x, s.y, s.size, starPaint)
         }
     }
@@ -303,13 +339,23 @@ class Background {
             heroCorePaint.alpha = ((200 + 55 * twinkle) * v).toInt().coerceIn(0, 255)
             canvas.drawCircle(h.x, h.y, h.size * 0.55f, heroCorePaint)
 
+            // Diffraction-spike flares, tapered to transparent at both tips via a gradient
+            // shader instead of a flat-alpha line — reads as a glinting star, not a cross.
             val flareLen = h.size * (1.6f + twinkle * 1.4f)
-            heroFlarePaint.color = h.color
-            heroFlarePaint.alpha = (140 * twinkle * v).toInt().coerceIn(0, 255)
+            heroFlarePaint.alpha = (170 * twinkle * v).toInt().coerceIn(0, 255)
             heroFlarePaint.strokeWidth = max(1f, h.size * 0.22f)
+            heroFlarePaint.shader = LinearGradient(
+                h.x - flareLen, h.y, h.x + flareLen, h.y,
+                intArrayOf(Color.TRANSPARENT, h.color, Color.TRANSPARENT), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP
+            )
             canvas.drawLine(h.x - flareLen, h.y, h.x + flareLen, h.y, heroFlarePaint)
+            heroFlarePaint.shader = LinearGradient(
+                h.x, h.y - flareLen, h.x, h.y + flareLen,
+                intArrayOf(Color.TRANSPARENT, h.color, Color.TRANSPARENT), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP
+            )
             canvas.drawLine(h.x, h.y - flareLen, h.x, h.y + flareLen, heroFlarePaint)
         }
+        heroFlarePaint.shader = null
     }
 
     private fun renderPlanets(canvas: Canvas) {
@@ -324,10 +370,36 @@ class Background {
                 canvas.drawCircle(0f, 0f, p.r * 1.85f, ringPaint)
                 canvas.restore()
             }
+
+            // Soft atmosphere rim glow, just outside the sphere.
             planetPaint.shader = RadialGradient(
-                p.x - p.r * 0.35f, p.y - p.r * 0.35f, p.r * 1.6f, p.lit, p.shadow, Shader.TileMode.CLAMP
+                p.x, p.y, p.r * 1.35f, Color.argb(85, Color.red(p.lit), Color.green(p.lit), Color.blue(p.lit)),
+                Color.TRANSPARENT, Shader.TileMode.CLAMP
+            )
+            canvas.drawCircle(p.x, p.y, p.r * 1.35f, planetPaint)
+
+            // Base sphere shading (lit hemisphere -> shadow).
+            planetPaint.shader = RadialGradient(p.x - p.r * 0.35f, p.y - p.r * 0.35f, p.r * 1.6f, p.lit, p.shadow, Shader.TileMode.CLAMP)
+            canvas.drawCircle(p.x, p.y, p.r, planetPaint)
+
+            // Surface bands + terminator shadow, clipped to the sphere for gas-giant-style detail.
+            canvas.save()
+            planetClipPath.reset()
+            planetClipPath.addCircle(p.x, p.y, p.r, Path.Direction.CW)
+            canvas.clipPath(planetClipPath)
+            planetDetailPaint.shader = null
+            for (b in 0 until 3) {
+                val bandY = p.y + (b - 1) * p.r * 0.42f
+                planetDetailPaint.color = if (b % 2 == 0) darken(p.shadow, 0.2f) else darken(p.lit, 0.1f)
+                planetDetailPaint.alpha = 55
+                canvas.drawRect(p.x - p.r, bandY - p.r * 0.12f, p.x + p.r, bandY + p.r * 0.12f, planetDetailPaint)
+            }
+            planetDetailPaint.alpha = 255
+            planetPaint.shader = RadialGradient(
+                p.x + p.r * 0.5f, p.y + p.r * 0.5f, p.r * 1.3f, Color.argb(150, 0, 0, 0), Color.TRANSPARENT, Shader.TileMode.CLAMP
             )
             canvas.drawCircle(p.x, p.y, p.r, planetPaint)
+            canvas.restore()
         }
         planetPaint.shader = null
     }
@@ -363,5 +435,15 @@ class Background {
             shootPaint.strokeWidth = 1.5f
             canvas.drawLine(tailX, tailY, s.x - s.vx * 0.14f, s.y - s.vy * 0.14f, shootPaint)
         }
+    }
+
+    /** Soft cinematic darkening toward the edges — the finishing touch that ties every
+     * layer together into one frame instead of a stack of flat shapes. */
+    private fun renderVignette(canvas: Canvas) {
+        vignettePaint.shader = RadialGradient(
+            Constants.GAME_WIDTH / 2f, Constants.GAME_HEIGHT / 2f, Constants.GAME_HEIGHT * 0.72f,
+            Color.TRANSPARENT, Color.argb(115, 0, 0, 0), Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(0f, 0f, Constants.GAME_WIDTH, Constants.GAME_HEIGHT, vignettePaint)
     }
 }

@@ -112,11 +112,23 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         sound.musicEnabled = save.musicOn
         sound.sfxEnabled = save.sfxOn
         syncMenuBackground()
+        syncMenuShip()
     }
 
     /** Menu shows the *next* sector's theme, so progression reads even before a run starts. */
     private fun syncMenuBackground() {
         background.configure(save.campaignProgress.coerceIn(0, LevelLibrary.levels.size - 1))
+    }
+
+    /** Puts the currently-selected aircraft on display for the menu's hangar-bay showcase —
+     * top shmups (Sky Force Reloaded and peers) foreground the ship on the title screen
+     * rather than reusing the gameplay view verbatim. Re-synced whenever selection could
+     * have changed (Hangar) so it's never stale. */
+    private fun syncMenuShip() {
+        val spec = AircraftCatalog.byId(save.selectedAircraft)
+        player.configure(spec, spec.maxHp, spec.maxShield, 1f, 1f)
+        player.spawnAtStart()
+        player.firing = false
     }
 
     override fun onDetachedFromWindow() {
@@ -215,14 +227,16 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     fun update(dt: Float) {
         camera.update(dt)
-        background.update(dt)
+        // The menu is a calm "hangar bay" showroom, not the same fast-scrolling gameplay
+        // scene — everything drifts at a fraction of gameplay speed here.
+        background.update(if (state == GameState.MENU) dt * 0.3f else dt)
 
         // Adaptive music: layers crossfade toward the current situation every frame.
         val combatTarget = if (state == GameState.PLAYING && enemies.isNotEmpty()) 1f else 0f
         val bossTarget = if (state == GameState.PLAYING && boss?.active == true) 1f else 0f
         sound.updateMusicMix(dt, combatTarget, bossTarget)
 
-        if (state == GameState.MENU) { menuTime += dt; return }
+        if (state == GameState.MENU) { menuTime += dt; player.update(dt); return }
         if (state != GameState.PLAYING) { particles.update(dt); return }
 
         if (bossWarning > 0f) bossWarning -= dt
@@ -506,7 +520,14 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         for (p in powerups) p.render(canvas)
         for (e in enemies) e.render(canvas)
         boss?.render(canvas)
-        if (state == GameState.PLAYING || state == GameState.PAUSED || victoryTimer > 0f || defeatTimer > 0f) {
+        if (state == GameState.MENU) {
+            // Large hero showcase of the selected ship — the menu is a hangar bay, not a
+            // second copy of the gameplay view.
+            canvas.save()
+            canvas.scale(1.7f, 1.7f, player.pos.x, player.pos.y)
+            player.render(canvas)
+            canvas.restore()
+        } else if (state == GameState.PLAYING || state == GameState.PAUSED || victoryTimer > 0f || defeatTimer > 0f) {
             if (player.alive) player.render(canvas)
         }
         for (b in bullets) b.render(canvas)
@@ -595,7 +616,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             GameState.VICTORY, GameState.DEFEAT -> {
                 if (UiLayout.contains(UiLayout.retryButton, vx, vy)) { sound.click(); startGame() }
                 else if (UiLayout.contains(UiLayout.menuButton, vx, vy)) {
-                    sound.click(); state = GameState.MENU; menuTime = 0f; syncMenuBackground()
+                    sound.click(); state = GameState.MENU; menuTime = 0f; syncMenuBackground(); syncMenuShip()
                 }
             }
         }
@@ -623,7 +644,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         val n = AircraftCatalog.all.size
         val spec = AircraftCatalog.all[hangarIndex]
         when {
-            UiLayout.contains(UiLayout.backButton, vx, vy) -> { sound.click(); state = GameState.MENU }
+            UiLayout.contains(UiLayout.backButton, vx, vy) -> { sound.click(); state = GameState.MENU; syncMenuShip() }
             UiLayout.contains(UiLayout.hangarPrev, vx, vy) -> { sound.click(); hangarIndex = (hangarIndex - 1 + n) % n }
             UiLayout.contains(UiLayout.hangarNext, vx, vy) -> { sound.click(); hangarIndex = (hangarIndex + 1) % n }
             UiLayout.contains(UiLayout.hangarAction, vx, vy) -> {

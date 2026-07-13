@@ -2,8 +2,11 @@ package com.skylegends.game.entities
 
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import com.skylegends.game.enemies.EnemySpec
 import com.skylegends.game.enemies.EnemyShape
 import com.skylegends.game.enemies.FirePattern
@@ -32,6 +35,29 @@ class Enemy(val spec: EnemySpec) : Entity() {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
+    private val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2f; alpha = 150 }
+
+    private fun lighten(c: Int, amt: Float): Int {
+        val r = (Color.red(c) + (255 - Color.red(c)) * amt).toInt().coerceIn(0, 255)
+        val g = (Color.green(c) + (255 - Color.green(c)) * amt).toInt().coerceIn(0, 255)
+        val b = (Color.blue(c) + (255 - Color.blue(c)) * amt).toInt().coerceIn(0, 255)
+        return Color.rgb(r, g, b)
+    }
+
+    private fun darken(c: Int, amt: Float): Int {
+        val f = 1f - amt
+        return Color.rgb((Color.red(c) * f).toInt(), (Color.green(c) * f).toInt(), (Color.blue(c) * f).toInt())
+    }
+
+    /** Top-lit gradient fill + dark outline instead of a flat color — matches the player
+     * ship's shading so enemies read as modeled hardware, not flat cutouts. */
+    private fun shadedFill(c: Canvas, p: Path, base: Int, topY: Float, bottomY: Float) {
+        paint.shader = LinearGradient(0f, topY, 0f, bottomY, lighten(base, 0.28f), darken(base, 0.35f), Shader.TileMode.CLAMP)
+        c.drawPath(p, paint)
+        paint.shader = null
+        outlinePaint.color = darken(base, 0.5f)
+        c.drawPath(p, outlinePaint)
+    }
 
     fun spawn(x: Float, y: Float) {
         pos.set(x, y)
@@ -168,8 +194,8 @@ class Enemy(val spec: EnemySpec) : Entity() {
 
     // These enemies point DOWN (toward the player), so nose is +y.
     private fun renderDrone(c: Canvas, w: Float, h: Float) {
-        paint.color = spec.bodyColor
-        c.drawOval(-w / 2f, -h * 0.32f, w / 2f, h * 0.32f, paint)
+        path.reset(); path.addOval(-w / 2f, -h * 0.32f, w / 2f, h * 0.32f, Path.Direction.CW)
+        shadedFill(c, path, spec.bodyColor, -h * 0.32f, h * 0.32f)
         // Fins.
         paint.color = spec.accentColor
         path.reset()
@@ -178,13 +204,13 @@ class Enemy(val spec: EnemySpec) : Entity() {
         path.reset()
         path.moveTo(w / 2f, 0f); path.lineTo(w * 0.72f, -h * 0.18f); path.lineTo(w * 0.3f, -h * 0.2f); path.close()
         c.drawPath(path, paint)
-        // Core eye.
-        paint.color = Color.rgb(255, 90, 90)
+        // Core eye — glowing radial "iris" instead of a flat dot.
+        paint.shader = RadialGradient(0f, 0f, w * 0.14f, Color.rgb(255, 200, 190), Color.rgb(200, 40, 40), Shader.TileMode.CLAMP)
         c.drawCircle(0f, 0f, w * 0.14f, paint)
+        paint.shader = null
     }
 
     private fun renderDart(c: Canvas, w: Float, h: Float) {
-        paint.color = spec.bodyColor
         path.reset()
         path.moveTo(0f, h / 2f)               // nose points down
         path.lineTo(w / 2f, -h * 0.3f)
@@ -192,7 +218,7 @@ class Enemy(val spec: EnemySpec) : Entity() {
         path.lineTo(-w * 0.18f, -h / 2f)
         path.lineTo(-w / 2f, -h * 0.3f)
         path.close()
-        c.drawPath(path, paint)
+        shadedFill(c, path, spec.bodyColor, -h / 2f, h / 2f)
         paint.color = spec.accentColor
         path.reset()
         path.moveTo(0f, h / 2f); path.lineTo(w * 0.14f, -h * 0.1f); path.lineTo(-w * 0.14f, -h * 0.1f); path.close()
@@ -200,20 +226,20 @@ class Enemy(val spec: EnemySpec) : Entity() {
     }
 
     private fun renderGunship(c: Canvas, w: Float, h: Float) {
-        paint.color = spec.bodyColor
-        c.drawRoundRect(-w / 2f, -h * 0.3f, w / 2f, h * 0.36f, 12f, 12f, paint)
+        path.reset(); path.addRoundRect(-w / 2f, -h * 0.3f, w / 2f, h * 0.36f, 12f, 12f, Path.Direction.CW)
+        shadedFill(c, path, spec.bodyColor, -h * 0.3f, h * 0.36f)
         // Cannons.
         paint.color = spec.accentColor
         c.drawRect(-w * 0.34f, h * 0.2f, -w * 0.2f, h * 0.5f, paint)
         c.drawRect(w * 0.2f, h * 0.2f, w * 0.34f, h * 0.5f, paint)
-        // Bridge.
-        paint.color = Color.rgb(255, 210, 130)
+        // Bridge — glassy highlight.
+        paint.shader = RadialGradient(-w * 0.03f, -h * 0.08f, w * 0.14f, Color.WHITE, Color.rgb(255, 190, 110), Shader.TileMode.CLAMP)
         c.drawCircle(0f, -h * 0.05f, w * 0.12f, paint)
+        paint.shader = null
     }
 
     private fun renderTurret(c: Canvas, w: Float, @Suppress("UNUSED_PARAMETER") h: Float) {
         // Octagon base.
-        paint.color = spec.bodyColor
         path.reset()
         val r = w / 2f
         for (i in 0 until 8) {
@@ -222,7 +248,7 @@ class Enemy(val spec: EnemySpec) : Entity() {
             if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
         path.close()
-        c.drawPath(path, paint)
+        shadedFill(c, path, spec.bodyColor, -r, r)
         // Rotating barrel ring.
         paint.color = spec.accentColor
         c.drawCircle(0f, 0f, w * 0.24f, paint)

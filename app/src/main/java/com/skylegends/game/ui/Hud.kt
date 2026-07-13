@@ -4,6 +4,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import com.skylegends.game.utils.Constants
@@ -291,6 +292,37 @@ class Hud {
         c.drawText("${index + 1} / $count", W / 2f, 792f, small)
     }
 
+    private fun previewLighten(color: Int, amt: Float): Int {
+        val r = (Color.red(color) + (255 - Color.red(color)) * amt).toInt().coerceIn(0, 255)
+        val g = (Color.green(color) + (255 - Color.green(color)) * amt).toInt().coerceIn(0, 255)
+        val b = (Color.blue(color) + (255 - Color.blue(color)) * amt).toInt().coerceIn(0, 255)
+        return Color.rgb(r, g, b)
+    }
+
+    private fun previewDarken(color: Int, amt: Float): Int {
+        val f = 1f - amt
+        return Color.rgb((Color.red(color) * f).toInt(), (Color.green(color) * f).toInt(), (Color.blue(color) * f).toInt())
+    }
+
+    /** Same top-lit gradient + dark-outline treatment as the in-game ship, so the Hangar
+     * preview matches what you actually fly instead of looking like a flatter mock-up. */
+    private fun previewShadedFill(c: Canvas, p: android.graphics.Path, base: Int, topY: Float, bottomY: Float) {
+        fill.shader = LinearGradient(0f, topY, 0f, bottomY, previewLighten(base, 0.3f), previewDarken(base, 0.35f), Shader.TileMode.CLAMP)
+        c.drawPath(p, fill)
+        fill.shader = null
+        stroke.color = previewDarken(base, 0.55f)
+        stroke.strokeWidth = 2.2f
+        c.drawPath(p, stroke)
+        stroke.color = Color.argb(120, 255, 255, 255)
+        stroke.strokeWidth = 3f
+    }
+
+    private fun previewCanopy(c: Canvas, cx: Float, cy: Float, r: Float, tint: Int) {
+        fill.shader = RadialGradient(cx - r * 0.25f, cy - r * 0.3f, r * 1.3f, Color.WHITE, tint, Shader.TileMode.CLAMP)
+        c.drawCircle(cx, cy, r, fill)
+        fill.shader = null
+    }
+
     private fun drawShipPreview(c: Canvas, spec: com.skylegends.game.aircraft.AircraftSpec, cx: Float, cy: Float) {
         val s = 2.2f
         fill.color = Color.argb(50, 120, 180, 255)
@@ -300,37 +332,40 @@ class Hud {
         val p = android.graphics.Path()
         when (spec.shape) {
             com.skylegends.game.aircraft.HullShape.DELTA -> {
-                fill.color = spec.wingColor
-                p.moveTo(-w / 2f, h * 0.18f); p.lineTo(-w * 0.16f, -h * 0.1f); p.lineTo(-w * 0.16f, h * 0.34f); p.close(); c.drawPath(p, fill)
-                p.reset(); p.moveTo(w / 2f, h * 0.18f); p.lineTo(w * 0.16f, -h * 0.1f); p.lineTo(w * 0.16f, h * 0.34f); p.close(); c.drawPath(p, fill)
-                fill.color = spec.bodyColor
+                p.moveTo(-w / 2f, h * 0.18f); p.lineTo(-w * 0.16f, -h * 0.1f); p.lineTo(-w * 0.16f, h * 0.34f); p.close()
+                previewShadedFill(c, p, spec.wingColor, -h * 0.1f, h * 0.34f)
+                p.reset(); p.moveTo(w / 2f, h * 0.18f); p.lineTo(w * 0.16f, -h * 0.1f); p.lineTo(w * 0.16f, h * 0.34f); p.close()
+                previewShadedFill(c, p, spec.wingColor, -h * 0.1f, h * 0.34f)
                 p.reset(); p.moveTo(0f, -h / 2f); p.lineTo(w * 0.2f, h * 0.3f); p.lineTo(w * 0.12f, h / 2f)
-                p.lineTo(-w * 0.12f, h / 2f); p.lineTo(-w * 0.2f, h * 0.3f); p.close(); c.drawPath(p, fill)
-                fill.color = spec.accentColor; c.drawCircle(0f, -h * 0.12f, w * 0.1f, fill)
+                p.lineTo(-w * 0.12f, h / 2f); p.lineTo(-w * 0.2f, h * 0.3f); p.close()
+                previewShadedFill(c, p, spec.bodyColor, -h / 2f, h / 2f)
+                previewCanopy(c, 0f, -h * 0.12f, w * 0.1f, spec.accentColor)
                 drawHardware(c, spec, w * 0.5f, h * 0.18f)
             }
             com.skylegends.game.aircraft.HullShape.ARROW -> {
                 val aw = w * 0.92f; val ah = h * 1.1f
-                fill.color = spec.wingColor
                 p.moveTo(-aw * 0.08f, -ah * 0.10f); p.lineTo(-aw * 0.64f, ah * 0.46f)
-                p.lineTo(-aw * 0.30f, ah * 0.40f); p.lineTo(-aw * 0.08f, ah * 0.14f); p.close(); c.drawPath(p, fill)
+                p.lineTo(-aw * 0.30f, ah * 0.40f); p.lineTo(-aw * 0.08f, ah * 0.14f); p.close()
+                previewShadedFill(c, p, spec.wingColor, -ah * 0.1f, ah * 0.46f)
                 p.reset(); p.moveTo(aw * 0.08f, -ah * 0.10f); p.lineTo(aw * 0.64f, ah * 0.46f)
-                p.lineTo(aw * 0.30f, ah * 0.40f); p.lineTo(aw * 0.08f, ah * 0.14f); p.close(); c.drawPath(p, fill)
-                fill.color = spec.bodyColor
+                p.lineTo(aw * 0.30f, ah * 0.40f); p.lineTo(aw * 0.08f, ah * 0.14f); p.close()
+                previewShadedFill(c, p, spec.wingColor, -ah * 0.1f, ah * 0.46f)
                 p.reset(); p.moveTo(0f, -ah * 0.58f); p.lineTo(aw * 0.09f, ah * 0.30f); p.lineTo(0f, ah * 0.5f)
-                p.lineTo(-aw * 0.09f, ah * 0.30f); p.close(); c.drawPath(p, fill)
-                fill.color = spec.accentColor; c.drawCircle(0f, -ah * 0.20f, aw * 0.07f, fill)
+                p.lineTo(-aw * 0.09f, ah * 0.30f); p.close()
+                previewShadedFill(c, p, spec.bodyColor, -ah * 0.58f, ah * 0.5f)
+                previewCanopy(c, 0f, -ah * 0.20f, aw * 0.07f, spec.accentColor)
                 drawHardware(c, spec, aw * 0.64f, ah * 0.44f)
             }
             com.skylegends.game.aircraft.HullShape.HEAVY -> {
                 val hw = w * 1.4f; val hh = h * 0.96f
-                fill.color = spec.wingColor
-                c.drawRoundRect(-hw * 0.58f, -hh * 0.02f, -hw * 0.18f, hh * 0.40f, 8f, 8f, fill)
-                c.drawRoundRect(hw * 0.18f, -hh * 0.02f, hw * 0.58f, hh * 0.40f, 8f, 8f, fill)
-                fill.color = spec.bodyColor
-                p.moveTo(0f, -hh / 2f); p.lineTo(hw * 0.24f, hh * 0.10f); p.lineTo(hw * 0.20f, hh * 0.5f)
-                p.lineTo(-hw * 0.20f, hh * 0.5f); p.lineTo(-hw * 0.24f, hh * 0.10f); p.close(); c.drawPath(p, fill)
-                fill.color = spec.accentColor; c.drawCircle(0f, -hh * 0.14f, hw * 0.10f, fill)
+                p.reset(); p.addRoundRect(-hw * 0.58f, -hh * 0.02f, -hw * 0.18f, hh * 0.40f, 8f, 8f, android.graphics.Path.Direction.CW)
+                previewShadedFill(c, p, spec.wingColor, -hh * 0.02f, hh * 0.40f)
+                p.reset(); p.addRoundRect(hw * 0.18f, -hh * 0.02f, hw * 0.58f, hh * 0.40f, 8f, 8f, android.graphics.Path.Direction.CW)
+                previewShadedFill(c, p, spec.wingColor, -hh * 0.02f, hh * 0.40f)
+                p.reset(); p.moveTo(0f, -hh / 2f); p.lineTo(hw * 0.24f, hh * 0.10f); p.lineTo(hw * 0.20f, hh * 0.5f)
+                p.lineTo(-hw * 0.20f, hh * 0.5f); p.lineTo(-hw * 0.24f, hh * 0.10f); p.close()
+                previewShadedFill(c, p, spec.bodyColor, -hh / 2f, hh * 0.5f)
+                previewCanopy(c, 0f, -hh * 0.14f, hw * 0.10f, spec.accentColor)
                 fill.color = spec.wingColor; c.drawRect(-hw * 0.14f, hh * 0.16f, hw * 0.14f, hh * 0.22f, fill)
                 drawHardware(c, spec, hw * 0.42f, hh * 0.22f)
             }
