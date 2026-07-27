@@ -43,7 +43,10 @@ class Background {
      * wispy-cloud look instead of a couple of visibly separate circles. [blobs]/[coreColor] are
      * regenerated (not just repositioned) each time the cluster re-enters, so a reappearing
      * cluster never reads as "the same cloud" sliding back into view. */
-    private class Blob(val dx: Float, val dy: Float, val r: Float, val color: Int, val alphaScale: Float)
+    private class Blob(
+        val dx: Float, val dy: Float, val r: Float, val color: Int, val alphaScale: Float,
+        val stretch: Float, val angle: Float
+    )
     private class NebulaCluster(var x: Float, var y: Float, val speed: Float, var blobs: List<Blob>, var coreColor: Int)
 
     /** A planet is a one-shot flyby, not a fixed prop: it spawns small & distant at the top,
@@ -60,6 +63,15 @@ class Background {
 
     private class ShootingStar(var x: Float, var y: Float, val vx: Float, val vy: Float, var life: Float, val maxLife: Float)
 
+    /** Foreground debris — closer to "camera" than every other layer, so it drifts noticeably
+     * faster and carries a soft blur, the classic depth-of-field cue that finally sells real
+     * parallax depth instead of everything living on one flat plane. [jag] is a fixed set of
+     * radius fractions that gives each rock an irregular, non-circular silhouette. */
+    private class Rock(
+        var x: Float, var y: Float, val r: Float, val speed: Float,
+        var rotation: Float, val rotSpeed: Float, val jag: FloatArray
+    )
+
     private var rnd = Random(20260701)
     private var time = 0f
     private var theme = SpaceThemeCatalog.forSector(0)
@@ -70,9 +82,11 @@ class Background {
     private val planets = ArrayList<Planet>()
     private val galaxies = ArrayList<Galaxy>()
     private val shootingStars = ArrayList<ShootingStar>()
+    private val rocks = ArrayList<Rock>()
     private var shootingStarTimer = 6f
     private var planetSpawnTimer = 0f
     private var maxConcurrentPlanets = 0
+    private var rockSpawnTimer = 0f
 
     // Dense ambient particle field, drawn in one batched call. Position storage is reused
     // across themes; only color/motion/render style change with [DustMode].
@@ -96,6 +110,11 @@ class Background {
     private val nebulaPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
     }
+    private val rayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
+    }
+    private val rayPath = Path()
+    private val rayBlur = BlurMaskFilter(18f, BlurMaskFilter.Blur.NORMAL)
     private val planetPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val planetDetailPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val planetClipPath = Path()
@@ -105,8 +124,17 @@ class Background {
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val flashPaint = Paint()
     private val vignettePaint = Paint()
+    private val rockPath = Path()
+    private val rockPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rockBlur = BlurMaskFilter(3f, BlurMaskFilter.Blur.NORMAL)
 
     init {
+        // Fixed center/radius forever (GAME_HEIGHT is settled before Background is constructed —
+        // see MainActivity), so building this once instead of every single frame is a free win.
+        vignettePaint.shader = RadialGradient(
+            Constants.GAME_WIDTH / 2f, Constants.GAME_HEIGHT / 2f, Constants.GAME_HEIGHT * 0.72f,
+            Color.TRANSPARENT, Color.argb(115, 0, 0, 0), Shader.TileMode.CLAMP
+        )
         configure(0)
     }
 
@@ -174,6 +202,22 @@ class Background {
                 )
             )
         }
+
+        rocks.clear()
+        rockSpawnTimer = 2f + rnd.nextFloat() * 3f
+    }
+
+    private fun spawnRock() {
+        val r = 14f + rnd.nextFloat() * 22f
+        val points = 7 + rnd.nextInt(3)
+        val jag = FloatArray(points) { 0.65f + rnd.nextFloat() * 0.35f }
+        rocks.add(
+            Rock(
+                rnd.nextFloat() * Constants.GAME_WIDTH, -r * 2f,
+                r, Constants.SCROLL_SPEED * (1.3f + rnd.nextFloat() * 0.7f),
+                rnd.nextFloat() * 360f, -60f + rnd.nextFloat() * 120f, jag
+            )
+        )
     }
 
     /** Several overlapping blobs of varying size/density read as a turbulent wisp of gas rather
@@ -185,7 +229,10 @@ class Background {
             Blob(
                 (rnd.nextFloat() - 0.5f) * 260f, (rnd.nextFloat() - 0.5f) * 190f,
                 60f + rnd.nextFloat() * 160f, palette[rnd.nextInt(palette.size)],
-                0.5f + rnd.nextFloat() * 0.6f
+                0.5f + rnd.nextFloat() * 0.6f,
+                // Squashed + rotated per blob so a cluster reads as a turbulent wisp of gas
+                // instead of a pile of perfect circles.
+                0.4f + rnd.nextFloat() * 0.5f, rnd.nextFloat() * 360f
             )
         }
     }
@@ -265,6 +312,18 @@ class Background {
             g.y += g.speed * dt
             if (g.y - g.r * 2f > Constants.GAME_HEIGHT) { g.y = -g.r * 2f; g.x = rnd.nextFloat() * Constants.GAME_WIDTH }
         }
+
+        // Foreground debris only in themes with a clear enough sky to plausibly show it (not
+        // inside Cloud City's haze or Monsoon's storm front).
+        if (theme.starVisibility > 0.25f) {
+            for (rk in rocks) { rk.y += rk.speed * dt; rk.rotation += rk.rotSpeed * dt }
+            rocks.removeAll { it.y - it.r * 2f > Constants.GAME_HEIGHT + 40f }
+            rockSpawnTimer -= dt
+            if (rockSpawnTimer <= 0f && rocks.size < 3) {
+                rockSpawnTimer = 3f + rnd.nextFloat() * 4f
+                spawnRock()
+            }
+        }
         updateDust(dt)
 
         if (theme.starVisibility > 0.4f) {
@@ -331,6 +390,7 @@ class Background {
             renderShootingStars(canvas)
         }
         renderDust(canvas)
+        renderRocks(canvas)
         renderVignette(canvas)
 
         if (theme.lightning && lightningFlash > 0f) {
@@ -341,12 +401,23 @@ class Background {
 
     private fun renderNebulae(canvas: Canvas) {
         for (n in nebulae) {
+            // Faint light-shaft rays drawn BEHIND the gas, so the blobs' own soft translucent
+            // edges blend over and soften them — reads as light bleeding through the cloud,
+            // not laser beams overlaid on top of the whole scene.
+            renderNebulaRays(canvas, n)
             for (b in n.blobs) {
                 val cx = n.x + b.dx; val cy = n.y + b.dy
-                nebulaPaint.shader = RadialGradient(cx, cy, b.r, b.color, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+                // Squash + rotate before drawing the (still-circular-gradient) blob so it comes
+                // out as an elongated wisp — a turbulent gas cloud, not a stack of perfect circles.
+                canvas.save()
+                canvas.translate(cx, cy)
+                canvas.rotate(b.angle)
+                canvas.scale(1f, b.stretch)
+                nebulaPaint.shader = RadialGradient(0f, 0f, b.r, b.color, Color.TRANSPARENT, Shader.TileMode.CLAMP)
                 val alpha = Color.alpha(b.color)
                 nebulaPaint.alpha = (alpha * b.alphaScale).toInt().coerceIn(0, 255)
-                canvas.drawCircle(cx, cy, b.r, nebulaPaint)
+                canvas.drawCircle(0f, 0f, b.r, nebulaPaint)
+                canvas.restore()
             }
             // Brighter, tighter core glow so each cluster reads as one coherent cloud with an
             // internal hot spot, not just a pile of equal blobs.
@@ -356,6 +427,32 @@ class Background {
         }
         nebulaPaint.shader = null
         nebulaPaint.alpha = 255
+    }
+
+    /** Short, tapered wedges (not fixed-width lines) so each ray fades to a point instead of
+     * ending in a hard-edged cutoff — soft enough to read as bleeding light, not a spotlight. */
+    private fun renderNebulaRays(canvas: Canvas, n: NebulaCluster) {
+        val rayLen = 95f
+        rayPaint.maskFilter = rayBlur
+        for (i in 0 until 3) {
+            val a = (i * 55.0) + n.x.toDouble() * 0.2 + time * 1.2
+            val dx = cos(a).toFloat(); val dy = sin(a).toFloat()
+            val perpX = -dy; val perpY = dx
+            val baseHalfWidth = 16f + i * 3f
+            rayPath.reset()
+            rayPath.moveTo(n.x + perpX * baseHalfWidth, n.y + perpY * baseHalfWidth)
+            rayPath.lineTo(n.x - perpX * baseHalfWidth, n.y - perpY * baseHalfWidth)
+            rayPath.lineTo(n.x + dx * rayLen, n.y + dy * rayLen)
+            rayPath.close()
+            rayPaint.shader = LinearGradient(
+                n.x, n.y, n.x + dx * rayLen, n.y + dy * rayLen,
+                intArrayOf(Color.argb(38, Color.red(n.coreColor), Color.green(n.coreColor), Color.blue(n.coreColor)), Color.TRANSPARENT),
+                floatArrayOf(0f, 1f), Shader.TileMode.CLAMP
+            )
+            canvas.drawPath(rayPath, rayPaint)
+        }
+        rayPaint.shader = null
+        rayPaint.maskFilter = null
     }
 
     private fun renderHorizonGlow(canvas: Canvas) {
@@ -522,13 +619,44 @@ class Background {
         }
     }
 
+    /** Closest layer in the scene — a soft blur (depth-of-field) plus a noticeably faster drift
+     * than anything else is what makes the rest of the backdrop finally read as *behind* it. */
+    private fun renderRocks(canvas: Canvas) {
+        for (rk in rocks) {
+            canvas.save()
+            canvas.translate(rk.x, rk.y)
+            canvas.rotate(rk.rotation)
+            rockPath.reset()
+            val n = rk.jag.size
+            for (i in 0 until n) {
+                val a = (i / n.toFloat()) * 2f * Math.PI.toFloat()
+                val rr = rk.r * rk.jag[i]
+                val x = cos(a) * rr; val y = sin(a) * rr
+                if (i == 0) rockPath.moveTo(x, y) else rockPath.lineTo(x, y)
+            }
+            rockPath.close()
+
+            rockPaint.maskFilter = rockBlur
+            rockPaint.style = Paint.Style.FILL
+            rockPaint.color = Color.rgb(20, 18, 24)
+            rockPaint.alpha = 200
+            canvas.drawPath(rockPath, rockPaint)
+
+            // Thin rim light on the silhouette edge, catching ambient starlight.
+            rockPaint.maskFilter = null
+            rockPaint.style = Paint.Style.STROKE
+            rockPaint.strokeWidth = 2f
+            rockPaint.color = Color.argb(90, 200, 210, 230)
+            canvas.drawPath(rockPath, rockPaint)
+            rockPaint.style = Paint.Style.FILL
+            canvas.restore()
+        }
+    }
+
     /** Soft cinematic darkening toward the edges — the finishing touch that ties every
-     * layer together into one frame instead of a stack of flat shapes. */
+     * layer together into one frame instead of a stack of flat shapes. Shader is built once,
+     * in [init] — it never changes frame to frame. */
     private fun renderVignette(canvas: Canvas) {
-        vignettePaint.shader = RadialGradient(
-            Constants.GAME_WIDTH / 2f, Constants.GAME_HEIGHT / 2f, Constants.GAME_HEIGHT * 0.72f,
-            Color.TRANSPARENT, Color.argb(115, 0, 0, 0), Shader.TileMode.CLAMP
-        )
         canvas.drawRect(0f, 0f, Constants.GAME_WIDTH, Constants.GAME_HEIGHT, vignettePaint)
     }
 }
