@@ -35,7 +35,9 @@ object LevelLibrary {
 
     private val sectorNames = listOf(
         "ORBITAL APPROACH", "CLOUD CITY SIEGE", "MONSOON FRONT", "IRON COASTLINE",
-        "VOLCANIC RIDGE", "FROZEN ABYSS", "STRATOSPHERE BREACH", "THE LAST SKY"
+        "VOLCANIC RIDGE", "FROZEN ABYSS", "STRATOSPHERE BREACH", "THE LAST SKY",
+        "SHATTERED MOON", "NEBULA GRAVEYARD", "SOLAR FURNACE", "THE RING WORLD",
+        "EVENT HORIZON", "QUANTUM RIFT", "THE HIVE CORE", "GALACTIC THRONE"
     )
 
     val levels: List<Level> = sectorNames.indices.map { tier -> buildSector(tier) }

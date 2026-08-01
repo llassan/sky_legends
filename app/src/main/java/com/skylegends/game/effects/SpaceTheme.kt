@@ -182,6 +182,150 @@ object SpaceThemeCatalog {
             horizonGlow = Color.argb(100, 200, 40, 60),
             lightning = false,
             galaxyColor = Color.argb(130, 220, 70, 90)
+        ),
+        // 8 — SHATTERED MOON: cold grey debris field over a broken moon.
+        SpaceTheme(
+            sky = intArrayOf(
+                Color.rgb(6, 8, 12), Color.rgb(16, 20, 28), Color.rgb(30, 34, 44),
+                Color.rgb(20, 24, 32), Color.rgb(6, 8, 12)
+            ),
+            starVisibility = 0.95f,
+            nebulaColors = listOf(Color.argb(60, 150, 165, 185), Color.argb(45, 120, 140, 170)),
+            nebulaCount = 3,
+            planetColors = listOf(
+                Color.rgb(210, 215, 220) to Color.rgb(70, 75, 85),
+                Color.rgb(180, 185, 195) to Color.rgb(55, 60, 70)
+            ),
+            planetCount = 2,
+            dustColor = Color.argb(90, 200, 210, 225),
+            dustMode = DustMode.SPARKLE,
+            horizonGlow = null,
+            lightning = false,
+            galaxyColor = Color.argb(110, 180, 195, 220)
+        ),
+        // 9 — NEBULA GRAVEYARD: violet-green nebula strewn with wreckage.
+        SpaceTheme(
+            sky = intArrayOf(
+                Color.rgb(8, 4, 16), Color.rgb(22, 10, 34), Color.rgb(30, 20, 40),
+                Color.rgb(16, 24, 30), Color.rgb(4, 8, 12)
+            ),
+            starVisibility = 0.85f,
+            nebulaColors = listOf(Color.argb(90, 150, 90, 230), Color.argb(70, 90, 220, 160), Color.argb(65, 190, 110, 255)),
+            nebulaCount = 5,
+            planetColors = listOf(Color.rgb(160, 120, 200) to Color.rgb(40, 25, 70)),
+            planetCount = 1,
+            dustColor = Color.argb(80, 190, 160, 230),
+            dustMode = DustMode.MIST,
+            horizonGlow = null,
+            lightning = false,
+            galaxyColor = Color.argb(130, 170, 130, 240)
+        ),
+        // 10 — SOLAR FURNACE: searing corona, blinding light.
+        SpaceTheme(
+            sky = intArrayOf(
+                Color.rgb(30, 10, 2), Color.rgb(70, 26, 4), Color.rgb(140, 70, 10),
+                Color.rgb(200, 120, 20), Color.rgb(90, 40, 6)
+            ),
+            starVisibility = 0.2f,
+            nebulaColors = listOf(Color.argb(90, 255, 170, 50), Color.argb(75, 255, 90, 30), Color.argb(70, 255, 210, 90)),
+            nebulaCount = 4,
+            planetColors = listOf(Color.rgb(255, 180, 60) to Color.rgb(80, 30, 5)),
+            planetCount = 1,
+            dustColor = Color.argb(170, 255, 190, 90),
+            dustMode = DustMode.EMBER,
+            horizonGlow = Color.argb(170, 255, 150, 40),
+            lightning = false
+        ),
+        // 11 — THE RING WORLD: golden megastructure arcing across the sky.
+        SpaceTheme(
+            sky = intArrayOf(
+                Color.rgb(10, 10, 6), Color.rgb(26, 24, 14), Color.rgb(46, 40, 22),
+                Color.rgb(70, 60, 34), Color.rgb(30, 26, 16)
+            ),
+            starVisibility = 0.7f,
+            nebulaColors = listOf(Color.argb(75, 255, 220, 120), Color.argb(55, 230, 190, 90)),
+            nebulaCount = 3,
+            planetColors = listOf(
+                Color.rgb(240, 215, 150) to Color.rgb(90, 70, 30),
+                Color.rgb(255, 235, 180) to Color.rgb(120, 95, 45)
+            ),
+            planetCount = 2,
+            dustColor = Color.argb(90, 255, 235, 170),
+            dustMode = DustMode.SPARKLE,
+            horizonGlow = Color.argb(120, 255, 210, 110),
+            lightning = false,
+            galaxyColor = Color.argb(110, 255, 225, 150)
+        ),
+        // 12 — EVENT HORIZON: a black hole's accretion glow in the dark.
+        SpaceTheme(
+            sky = intArrayOf(
+                Color.rgb(2, 2, 4), Color.rgb(8, 4, 12), Color.rgb(18, 8, 8),
+                Color.rgb(8, 4, 10), Color.rgb(1, 1, 2)
+            ),
+            starVisibility = 1f,
+            nebulaColors = listOf(Color.argb(80, 255, 130, 60), Color.argb(60, 120, 60, 200), Color.argb(70, 255, 90, 120)),
+            nebulaCount = 4,
+            planetColors = listOf(Color.rgb(40, 30, 40) to Color.rgb(255, 140, 70)),
+            planetCount = 1,
+            dustColor = Color.argb(70, 200, 160, 255),
+            dustMode = DustMode.SPARKLE,
+            horizonGlow = Color.argb(140, 255, 120, 50),
+            lightning = false,
+            galaxyColor = Color.argb(120, 255, 150, 90)
+        ),
+        // 13 — QUANTUM RIFT: unstable cyan-magenta fracture, lightning arcs.
+        SpaceTheme(
+            sky = intArrayOf(
+                Color.rgb(6, 10, 20), Color.rgb(20, 8, 34), Color.rgb(10, 30, 46),
+                Color.rgb(30, 12, 44), Color.rgb(6, 10, 20)
+            ),
+            starVisibility = 0.6f,
+            nebulaColors = listOf(Color.argb(90, 80, 240, 255), Color.argb(80, 255, 90, 220), Color.argb(70, 150, 120, 255)),
+            nebulaCount = 5,
+            planetColors = emptyList(),
+            planetCount = 0,
+            dustColor = Color.argb(120, 160, 240, 255),
+            dustMode = DustMode.SPARKLE,
+            horizonGlow = null,
+            lightning = true,
+            galaxyColor = Color.argb(120, 200, 130, 255)
+        ),
+        // 14 — THE HIVE CORE: sickly bioluminescent green, close and organic.
+        SpaceTheme(
+            sky = intArrayOf(
+                Color.rgb(4, 12, 6), Color.rgb(10, 26, 12), Color.rgb(18, 40, 20),
+                Color.rgb(12, 30, 16), Color.rgb(4, 12, 6)
+            ),
+            starVisibility = 0.15f,
+            nebulaColors = listOf(Color.argb(90, 120, 255, 110), Color.argb(70, 90, 200, 120), Color.argb(65, 170, 255, 90)),
+            nebulaCount = 4,
+            planetColors = listOf(Color.rgb(120, 200, 90) to Color.rgb(20, 50, 20)),
+            planetCount = 1,
+            dustColor = Color.argb(120, 150, 255, 130),
+            dustMode = DustMode.MIST,
+            horizonGlow = Color.argb(120, 110, 230, 90),
+            lightning = false
+        ),
+        // 15 — GALACTIC THRONE: regal gold-and-crimson final stand.
+        SpaceTheme(
+            sky = intArrayOf(
+                Color.rgb(12, 4, 8), Color.rgb(34, 8, 14), Color.rgb(60, 20, 20),
+                Color.rgb(90, 60, 24), Color.rgb(20, 6, 10)
+            ),
+            starVisibility = 0.9f,
+            nebulaColors = listOf(Color.argb(90, 255, 200, 90), Color.argb(75, 230, 50, 70), Color.argb(70, 255, 150, 90)),
+            nebulaCount = 5,
+            planetColors = listOf(
+                Color.rgb(255, 210, 120) to Color.rgb(90, 40, 20),
+                Color.rgb(220, 90, 90) to Color.rgb(50, 12, 12),
+                Color.rgb(255, 235, 170) to Color.rgb(120, 80, 40)
+            ),
+            planetCount = 3,
+            dustColor = Color.argb(100, 255, 220, 150),
+            dustMode = DustMode.EMBER,
+            horizonGlow = Color.argb(140, 255, 180, 80),
+            lightning = false,
+            galaxyColor = Color.argb(140, 255, 200, 120)
         )
     )
 

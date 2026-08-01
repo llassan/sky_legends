@@ -8,6 +8,7 @@ import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import com.skylegends.game.bosses.BossAttackPattern
+import com.skylegends.game.bosses.BossHullShape
 import com.skylegends.game.bosses.BossSpec
 import com.skylegends.game.utils.Constants
 import kotlin.math.atan2
@@ -234,90 +235,45 @@ class Boss(private val spec: BossSpec) : Entity() {
         val w = 200f * spec.hullScale; val h = 150f * spec.hullScale
         val damage = 1f - (hp / maxHp).coerceIn(0f, 1f)
 
-        // Hull colour shifts toward red with rage.
-        val r = (70 + 120 * damage).toInt().coerceIn(0, 255)
-        val hullBase = Color.rgb(r, 70, 90)
+        // Each boss keeps its OWN plating colour (so no two read alike), still shifting toward
+        // rage-red as it takes damage.
+        val hullBase = lerpColor(spec.hullColor, Color.rgb(200, 60, 60), damage * 0.5f)
 
-        // Rear engine thrusters, drawn BEHIND the hull so the glow reads as escaping from
-        // past the ship's silhouette rather than sitting on top of it — the "just arrived
-        // from deep space" cue movie capital ships lead with.
-        renderEngineGlow(canvas, w, h)
+        // A few silhouettes want a glow BEHIND the hull: ship-like hulls get rear thrusters,
+        // the SOLAR corona gets a flaring halo. Drawn first so the hull sits on top.
+        when (spec.hullShape) {
+            BossHullShape.WEDGE, BossHullShape.MANTA, BossHullShape.TRIDENT, BossHullShape.SAUCER ->
+                renderEngineGlow(canvas, w, h)
+            BossHullShape.SOLAR -> {
+                val flare = 0.7f + 0.3f * sin(age * 4f)
+                paint.shader = RadialGradient(0f, 0f, w * 0.9f * flare, Color.argb(150, 255, 190, 70), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+                canvas.drawCircle(0f, 0f, w * 0.9f * flare, paint)
+                paint.shader = null
+            }
+            else -> {}
+        }
 
-        // Hull — an asymmetric-looking jagged wedge (still bilaterally symmetric for readable
-        // gameplay) instead of a plain hexagon, so it reads as a layered alien warship rather
-        // than a geometric placeholder. Top-lit gradient + dark outline so a hull this large
-        // reads as modeled plate, not a flat decal.
-        path.reset()
-        path.moveTo(0f, h * 0.60f)                    // nose tip
-        path.lineTo(w * 0.10f, h * 0.42f)
-        path.lineTo(w * 0.20f, h * 0.46f)
-        path.lineTo(w * 0.34f, h * 0.20f)
-        path.lineTo(w * 0.50f, h * 0.14f)
-        path.lineTo(w * 0.46f, -h * 0.02f)
-        path.lineTo(w * 0.62f, -h * 0.10f)             // wingtip — widest point
-        path.lineTo(w * 0.56f, -h * 0.28f)
-        path.lineTo(w * 0.34f, -h * 0.40f)
-        path.lineTo(w * 0.30f, -h * 0.56f)
-        path.lineTo(w * 0.10f, -h * 0.50f)
-        path.lineTo(0f, -h * 0.58f)                    // rear spine notch
-        path.lineTo(-w * 0.10f, -h * 0.50f)
-        path.lineTo(-w * 0.30f, -h * 0.56f)
-        path.lineTo(-w * 0.34f, -h * 0.40f)
-        path.lineTo(-w * 0.56f, -h * 0.28f)
-        path.lineTo(-w * 0.62f, -h * 0.10f)             // wingtip — widest point
-        path.lineTo(-w * 0.46f, -h * 0.02f)
-        path.lineTo(-w * 0.50f, h * 0.14f)
-        path.lineTo(-w * 0.34f, h * 0.20f)
-        path.lineTo(-w * 0.20f, h * 0.46f)
-        path.lineTo(-w * 0.10f, h * 0.42f)
-        path.close()
-        paint.shader = LinearGradient(0f, -h * 0.58f, 0f, h * 0.60f, lighten(hullBase, 0.25f), darken(hullBase, 0.4f), Shader.TileMode.CLAMP)
+        // Build this boss's silhouette into `path` (reused by the hit-flash), then draw it as a
+        // top-lit modeled plate with a dark outline.
+        buildHull(spec.hullShape, w, h)
+        paint.shader = LinearGradient(0f, -h * 0.6f, 0f, h * 0.6f, lighten(hullBase, 0.25f), darken(hullBase, 0.4f), Shader.TileMode.CLAMP)
         canvas.drawPath(path, paint)
         paint.shader = null
-        outlinePaint.color = darken(hullBase, 0.6f)
+        outlinePaint.color = darken(hullBase, 0.62f)
         canvas.drawPath(path, outlinePaint)
 
-        // Raised centerline spine plate — reads as a bridge/keel structure running the
-        // length of the hull, like a Star-Destroyer-style command spine.
-        val armor = Color.rgb(50, 55, 75)
-        detailPath.reset()
-        detailPath.moveTo(0f, h * 0.30f)
-        detailPath.lineTo(w * 0.14f, h * 0.06f)
-        detailPath.lineTo(w * 0.11f, -h * 0.38f)
-        detailPath.lineTo(0f, -h * 0.48f)
-        detailPath.lineTo(-w * 0.11f, -h * 0.38f)
-        detailPath.lineTo(-w * 0.14f, h * 0.06f)
-        detailPath.close()
-        paint.shader = LinearGradient(0f, -h * 0.48f, 0f, h * 0.3f, lighten(armor, 0.3f), darken(armor, 0.3f), Shader.TileMode.CLAMP)
-        canvas.drawPath(detailPath, paint)
-        paint.shader = null
-
-        // Greebled panel lines scattered across both wings — small dark rects read as access
-        // hatches/vents at this scale, the detail movie model-ships lean on heavily.
-        renderGreebles(canvas, w, h, hullBase)
-
-        // Side pods (weapon housings).
-        val pod = Color.rgb(90, 60, 70)
-        paint.shader = LinearGradient(-w * 0.52f, 0f, w * 0.52f, 0f, lighten(pod, 0.2f), darken(pod, 0.3f), Shader.TileMode.CLAMP)
-        canvas.drawRoundRect(-w * 0.52f, -h * 0.1f, -w * 0.3f, h * 0.28f, 8f, 8f, paint)
-        canvas.drawRoundRect(w * 0.3f, -h * 0.1f, w * 0.52f, h * 0.28f, 8f, 8f, paint)
-        paint.shader = null
-
-        // Anti-collision nav lights along the wingtips/shoulders — the blinking red/green/
-        // white strobe convention every movie/TV spacecraft uses, and cheap to fake with a
-        // couple of sine-timed dots.
-        renderNavLights(canvas, w, h)
+        // Shape-specific surface detail / flourishes.
+        renderShapeAccents(canvas, spec.hullShape, w, h, hullBase)
 
         // Core weak point — pulses, brighter in later phases. Soft outer bloom + hot white
-        // center reads as an actual glowing reactor (a Death-Star-exhaust-port beat), not a
-        // flat dot.
+        // center reads as a glowing reactor. Sits where each hull wants its heart.
         val pulse = 0.6f + 0.4f * sin(age * (3f + phase)).toFloat()
         val coreColor = when (phase) {
             1 -> spec.coreColor
             2 -> Color.rgb(255, 200, 90)
             else -> Color.rgb(255, 90, 90)
         }
-        val coreY = -h * 0.08f
+        val coreY = coreOffsetY(spec.hullShape, h)
         paint.shader = RadialGradient(0f, coreY, 42f + 8f * pulse, coreColor, Color.TRANSPARENT, Shader.TileMode.CLAMP)
         paint.alpha = (180 + 75 * pulse).toInt().coerceIn(0, 255)
         canvas.drawCircle(0f, coreY, 42f + 8f * pulse, paint)
@@ -346,6 +302,272 @@ class Boss(private val spec: BossSpec) : Entity() {
             paint.alpha = 255
         }
         canvas.restore()
+    }
+
+    /** Where each hull carries its glowing core, in local space. */
+    private fun coreOffsetY(shape: BossHullShape, h: Float): Float = when (shape) {
+        BossHullShape.WEDGE -> -h * 0.08f
+        BossHullShape.MANTA -> -h * 0.02f
+        BossHullShape.MAW -> -h * 0.10f
+        else -> 0f
+    }
+
+    private fun lerpColor(a: Int, b: Int, t: Float): Int {
+        val u = t.coerceIn(0f, 1f)
+        return Color.rgb(
+            (Color.red(a) + (Color.red(b) - Color.red(a)) * u).toInt().coerceIn(0, 255),
+            (Color.green(a) + (Color.green(b) - Color.green(a)) * u).toInt().coerceIn(0, 255),
+            (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * u).toInt().coerceIn(0, 255)
+        )
+    }
+
+    // ---- Silhouettes: each fills `path` with a completely different hull outline. ----
+
+    private fun buildHull(shape: BossHullShape, w: Float, h: Float) {
+        path.reset()
+        path.fillType = Path.FillType.WINDING
+        when (shape) {
+            BossHullShape.WEDGE -> hullWedge(w, h)
+            BossHullShape.SAUCER -> path.addOval(-w * 0.62f, -h * 0.20f, w * 0.62f, h * 0.30f, Path.Direction.CW)
+            BossHullShape.MANTA -> hullManta(w, h)
+            BossHullShape.CRESCENT -> hullCrescent(w, h)
+            BossHullShape.TRIDENT -> hullTrident(w, h)
+            BossHullShape.SPIDER -> starInto(8, 0.30f, 0.62f, 0f, w)
+            BossHullShape.RING -> hullRing(w)
+            BossHullShape.ORB -> path.addCircle(0f, -h * 0.02f, w * 0.52f, Path.Direction.CW)
+            BossHullShape.CRYSTAL -> starInto(6, 0.34f, 0.60f, 0.26f, w)
+            BossHullShape.HIVE -> hullHive(w)
+            BossHullShape.SOLAR -> starInto(16, 0.46f, 0.62f, 0f, w)
+            BossHullShape.MAW -> hullMaw(w, h)
+        }
+    }
+
+    /** The original layered-warship wedge — nose toward the player, swept wings, spine notch. */
+    private fun hullWedge(w: Float, h: Float) {
+        path.moveTo(0f, h * 0.60f)
+        path.lineTo(w * 0.10f, h * 0.42f); path.lineTo(w * 0.20f, h * 0.46f)
+        path.lineTo(w * 0.34f, h * 0.20f); path.lineTo(w * 0.50f, h * 0.14f)
+        path.lineTo(w * 0.46f, -h * 0.02f); path.lineTo(w * 0.62f, -h * 0.10f)
+        path.lineTo(w * 0.56f, -h * 0.28f); path.lineTo(w * 0.34f, -h * 0.40f)
+        path.lineTo(w * 0.30f, -h * 0.56f); path.lineTo(w * 0.10f, -h * 0.50f)
+        path.lineTo(0f, -h * 0.58f)
+        path.lineTo(-w * 0.10f, -h * 0.50f); path.lineTo(-w * 0.30f, -h * 0.56f)
+        path.lineTo(-w * 0.34f, -h * 0.40f); path.lineTo(-w * 0.56f, -h * 0.28f)
+        path.lineTo(-w * 0.62f, -h * 0.10f); path.lineTo(-w * 0.46f, -h * 0.02f)
+        path.lineTo(-w * 0.50f, h * 0.14f); path.lineTo(-w * 0.34f, h * 0.20f)
+        path.lineTo(-w * 0.20f, h * 0.46f); path.lineTo(-w * 0.10f, h * 0.42f)
+        path.close()
+    }
+
+    /** A stingray: curved swept wings sweeping back to twin tail fins. */
+    private fun hullManta(w: Float, h: Float) {
+        path.moveTo(0f, h * 0.56f)
+        path.cubicTo(w * 0.52f, h * 0.20f, w * 0.64f, -h * 0.06f, w * 0.46f, -h * 0.34f)
+        path.lineTo(w * 0.16f, -h * 0.12f); path.lineTo(w * 0.12f, -h * 0.50f)
+        path.lineTo(0f, -h * 0.26f)
+        path.lineTo(-w * 0.12f, -h * 0.50f); path.lineTo(-w * 0.16f, -h * 0.12f)
+        path.cubicTo(-w * 0.64f, -h * 0.06f, -w * 0.52f, h * 0.20f, 0f, h * 0.56f)
+        path.close()
+    }
+
+    /** A horned crescent: a disc with a bite carved out toward the player (even-odd fill). */
+    private fun hullCrescent(w: Float, h: Float) {
+        path.fillType = Path.FillType.EVEN_ODD
+        path.addCircle(0f, -h * 0.04f, w * 0.56f, Path.Direction.CW)
+        path.addCircle(0f, h * 0.42f, w * 0.50f, Path.Direction.CW)
+    }
+
+    /** Three forward-thrust prongs from a swept back plate. */
+    private fun hullTrident(w: Float, h: Float) {
+        path.moveTo(0f, -h * 0.42f)
+        path.lineTo(-w * 0.50f, -h * 0.18f); path.lineTo(-w * 0.40f, h * 0.52f)
+        path.lineTo(-w * 0.26f, -h * 0.02f); path.lineTo(-w * 0.10f, h * 0.14f)
+        path.lineTo(0f, h * 0.60f)
+        path.lineTo(w * 0.10f, h * 0.14f); path.lineTo(w * 0.26f, -h * 0.02f)
+        path.lineTo(w * 0.40f, h * 0.52f); path.lineTo(w * 0.50f, -h * 0.18f)
+        path.close()
+    }
+
+    /** A hollow ring/torus (even-odd punches out the centre — the core floats in the hole). */
+    private fun hullRing(w: Float) {
+        path.fillType = Path.FillType.EVEN_ODD
+        path.addCircle(0f, 0f, w * 0.60f, Path.Direction.CW)
+        path.addCircle(0f, 0f, w * 0.34f, Path.Direction.CW)
+    }
+
+    /** A lumpy organic blob — a circle perturbed by fixed harmonics so it reads as living mass. */
+    private fun hullHive(w: Float) {
+        val n = 22
+        for (i in 0..n) {
+            val a = (Math.PI * 2 * i / n).toFloat()
+            val r = w * 0.50f + (sin(a * 3f) * 0.05f + sin(a * 5f + 1f) * 0.035f) * w
+            val x = cos(a) * r; val y = sin(a) * r
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        path.close()
+    }
+
+    /** A gaping maw: a disc with a V-mouth carved toward the player (even-odd fill). */
+    private fun hullMaw(w: Float, h: Float) {
+        path.fillType = Path.FillType.EVEN_ODD
+        path.addCircle(0f, -h * 0.04f, w * 0.52f, Path.Direction.CW)
+        path.moveTo(0f, -h * 0.04f)
+        path.lineTo(-w * 0.5f, h * 0.62f); path.lineTo(w * 0.5f, h * 0.62f)
+        path.close()
+    }
+
+    /** A radial star polygon — [points] spikes alternating an outer/inner radius. Drives the
+     * SPIDER, CRYSTAL and SOLAR hulls just by varying point count and spike depth. */
+    private fun starInto(points: Int, innerFrac: Float, outerFrac: Float, rot: Float, w: Float) {
+        val ro = w * outerFrac; val ri = w * innerFrac
+        val n = points * 2
+        for (i in 0 until n) {
+            val a = rot + (Math.PI * i / points).toFloat()
+            val r = if (i % 2 == 0) ro else ri
+            val x = cos(a) * r; val y = sin(a) * r
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        path.close()
+    }
+
+    // ---- Shape-specific surface detail. ----
+
+    private fun renderShapeAccents(canvas: Canvas, shape: BossHullShape, w: Float, h: Float, hullBase: Int) {
+        when (shape) {
+            BossHullShape.WEDGE -> {
+                renderSpinePlate(canvas, w, h)
+                renderGreebles(canvas, w, h, hullBase)
+                renderSidePods(canvas, w, h)
+                renderNavLights(canvas, w, h)
+            }
+            BossHullShape.SAUCER -> {
+                val dome = lighten(hullBase, 0.35f)
+                paint.shader = RadialGradient(0f, -h * 0.04f, w * 0.30f, lighten(dome, 0.2f), darken(dome, 0.3f), Shader.TileMode.CLAMP)
+                canvas.drawOval(-w * 0.30f, -h * 0.20f, w * 0.30f, h * 0.10f, paint)
+                paint.shader = null
+                lightPaint.color = Color.rgb(120, 220, 255)
+                for (i in 0 until 10) {
+                    val a = age * 1.5f + i * (2f * Math.PI.toFloat() / 10)
+                    lightPaint.alpha = (110 + 145 * ((sin(a * 3f) + 1f) / 2f)).toInt().coerceIn(0, 255)
+                    canvas.drawCircle(cos(a) * w * 0.5f, h * 0.05f + sin(a) * h * 0.10f, 3.5f, lightPaint)
+                }
+                lightPaint.alpha = 255
+            }
+            BossHullShape.MANTA -> {
+                outlinePaint.color = lighten(hullBase, 0.5f)
+                canvas.drawPath(path, outlinePaint)
+                lightPaint.color = spec.coreColor; lightPaint.alpha = 220
+                canvas.drawCircle(-w * 0.22f, h * 0.06f, 6f, lightPaint)
+                canvas.drawCircle(w * 0.22f, h * 0.06f, 6f, lightPaint)
+                lightPaint.alpha = 255
+            }
+            BossHullShape.CRESCENT -> {
+                paint.style = Paint.Style.STROKE; paint.strokeWidth = 5f
+                paint.color = lighten(hullBase, 0.55f); paint.alpha = 200
+                canvas.drawCircle(0f, h * 0.42f, w * 0.50f, paint)
+                paint.alpha = 255; paint.style = Paint.Style.FILL
+            }
+            BossHullShape.TRIDENT -> {
+                lightPaint.color = spec.coreColor
+                val p = (sin(age * 5f) + 1f) / 2f
+                lightPaint.alpha = (150 + 105 * p).toInt().coerceIn(0, 255)
+                canvas.drawCircle(-w * 0.40f, h * 0.52f, 7f, lightPaint)
+                canvas.drawCircle(0f, h * 0.60f, 8f, lightPaint)
+                canvas.drawCircle(w * 0.40f, h * 0.52f, 7f, lightPaint)
+                lightPaint.alpha = 255
+            }
+            BossHullShape.SPIDER -> {
+                lightPaint.color = lighten(hullBase, 0.4f)
+                for (i in 0 until 8) {
+                    val a = (Math.PI * 2 * i / 8).toFloat()
+                    canvas.drawCircle(cos(a) * w * 0.30f, sin(a) * w * 0.30f, 4f, lightPaint)
+                }
+            }
+            BossHullShape.RING -> {
+                lightPaint.color = spec.coreColor
+                for (i in 0 until 12) {
+                    val a = age * 0.6f + i * (2f * Math.PI.toFloat() / 12)
+                    lightPaint.alpha = (100 + 155 * ((sin(a * 2f) + 1f) / 2f)).toInt().coerceIn(0, 255)
+                    canvas.drawCircle(cos(a) * w * 0.47f, sin(a) * w * 0.47f, 4f, lightPaint)
+                }
+                lightPaint.alpha = 255
+            }
+            BossHullShape.ORB -> {
+                paint.color = darken(hullBase, 0.45f)
+                canvas.drawRect(-w * 0.52f, -h * 0.055f, w * 0.52f, h * 0.02f, paint)
+                paint.color = lighten(hullBase, 0.3f)
+                canvas.drawRect(-w * 0.52f, -h * 0.055f, w * 0.52f, -h * 0.035f, paint)
+            }
+            BossHullShape.CRYSTAL -> {
+                paint.style = Paint.Style.STROKE; paint.strokeWidth = 2.5f
+                paint.color = lighten(hullBase, 0.5f); paint.alpha = 170
+                for (i in 0 until 6) {
+                    val a = 0.26f + (Math.PI * (2 * i) / 6).toFloat()
+                    canvas.drawLine(0f, 0f, cos(a) * w * 0.58f, sin(a) * w * 0.58f, paint)
+                }
+                paint.alpha = 255; paint.style = Paint.Style.FILL
+            }
+            BossHullShape.HIVE -> {
+                val cells = arrayOf(
+                    floatArrayOf(-0.18f, -0.14f), floatArrayOf(0.20f, -0.10f),
+                    floatArrayOf(0.05f, 0.20f), floatArrayOf(-0.22f, 0.16f), floatArrayOf(0.26f, 0.18f)
+                )
+                for ((k, c) in cells.withIndex()) {
+                    val p = (sin(age * 3f + k) + 1f) / 2f
+                    lightPaint.color = spec.coreColor
+                    lightPaint.alpha = (60 + 120 * p).toInt().coerceIn(0, 255)
+                    canvas.drawCircle(c[0] * w, c[1] * w, 9f + 3f * p, lightPaint)
+                }
+                lightPaint.alpha = 255
+            }
+            BossHullShape.SOLAR -> {
+                // Corona already flares behind the hull; a hot inner disc finishes the star.
+                paint.shader = RadialGradient(0f, 0f, w * 0.34f, lighten(hullBase, 0.5f), darken(hullBase, 0.2f), Shader.TileMode.CLAMP)
+                canvas.drawCircle(0f, 0f, w * 0.34f, paint)
+                paint.shader = null
+            }
+            BossHullShape.MAW -> {
+                paint.shader = RadialGradient(0f, h * 0.28f, w * 0.30f, spec.coreColor, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+                canvas.drawCircle(0f, h * 0.28f, w * 0.30f, paint)
+                paint.shader = null
+                paint.color = lighten(hullBase, 0.55f)
+                detailPath.reset()
+                val teeth = 6
+                for (i in 0 until teeth) {
+                    val fx = -0.42f + 0.84f * (i / (teeth - 1f))
+                    val baseX = fx * w
+                    val baseY = h * 0.30f + Math.abs(fx) * h * 0.30f
+                    detailPath.moveTo(baseX - w * 0.05f, baseY)
+                    detailPath.lineTo(baseX, baseY + h * 0.14f)
+                    detailPath.lineTo(baseX + w * 0.05f, baseY)
+                    detailPath.close()
+                }
+                canvas.drawPath(detailPath, paint)
+            }
+        }
+    }
+
+    private fun renderSpinePlate(canvas: Canvas, w: Float, h: Float) {
+        val armor = Color.rgb(50, 55, 75)
+        detailPath.reset()
+        detailPath.moveTo(0f, h * 0.30f)
+        detailPath.lineTo(w * 0.14f, h * 0.06f)
+        detailPath.lineTo(w * 0.11f, -h * 0.38f)
+        detailPath.lineTo(0f, -h * 0.48f)
+        detailPath.lineTo(-w * 0.11f, -h * 0.38f)
+        detailPath.lineTo(-w * 0.14f, h * 0.06f)
+        detailPath.close()
+        paint.shader = LinearGradient(0f, -h * 0.48f, 0f, h * 0.3f, lighten(armor, 0.3f), darken(armor, 0.3f), Shader.TileMode.CLAMP)
+        canvas.drawPath(detailPath, paint)
+        paint.shader = null
+    }
+
+    private fun renderSidePods(canvas: Canvas, w: Float, h: Float) {
+        val pod = Color.rgb(90, 60, 70)
+        paint.shader = LinearGradient(-w * 0.52f, 0f, w * 0.52f, 0f, lighten(pod, 0.2f), darken(pod, 0.3f), Shader.TileMode.CLAMP)
+        canvas.drawRoundRect(-w * 0.52f, -h * 0.1f, -w * 0.3f, h * 0.28f, 8f, 8f, paint)
+        canvas.drawRoundRect(w * 0.3f, -h * 0.1f, w * 0.52f, h * 0.28f, 8f, 8f, paint)
+        paint.shader = null
     }
 
     private fun renderEngineGlow(canvas: Canvas, w: Float, h: Float) {

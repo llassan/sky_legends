@@ -11,3 +11,6 @@
 *.keystore
 keystore.properties
 *.bak
+# Play publishing service-account key — secret, never commit
+play-service-account.json
+*service-account*.json

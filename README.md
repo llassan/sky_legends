@@ -3,8 +3,8 @@
 [![View on GitHub](https://img.shields.io/badge/GitHub-llassan%2Fsky__legends-181717?logo=github)](https://github.com/llassan/sky_legends)
 
 A premium-feel vertical scrolling shoot-'em-up (SHMUP) for Android, built in **pure Kotlin +
-Canvas** (no game engine), in the same lineage as *Iron Fury*. It ships an 8-sector campaign,
-3 unlockable aircraft with special abilities, a coin-spend upgrade lab, and fully procedural
+Canvas** (no game engine), in the same lineage as *Iron Fury*. It ships a 16-sector campaign,
+6 aircraft with special abilities, a coin-spend upgrade lab, and fully procedural
 audio — all on the data-driven architecture the design called for.
 
 ## Play
@@ -22,15 +22,16 @@ audio — all on the data-driven architecture the design called for.
 
 ## Campaign
 
-8 sectors × 5 stages (4 enemy waves + 1 boss) = 40 stages, generated from a difficulty curve
+16 sectors × 5+ stages (enemy waves + 1 boss), generated from a difficulty curve
 rather than hand-authored file-by-file — enemy types unlock progressively, spawn density and
 pacing tighten, and each sector culminates in its own named boss (`SENTINEL MK-I` through
-`DREADNOUGHT PRIME`), scaled in HP and aggression. Clearing a sector unlocks the next and
-banks it in the save; dying replays the same sector. See `level/Level.kt` + `bosses/BossSpec.kt`.
+`GALACTIC EMPEROR`), scaled in HP and aggression, with its own backdrop theme. Clearing a
+sector unlocks the next and banks it in the save; dying replays the same sector. See
+`level/Level.kt` + `bosses/BossSpec.kt` + `effects/SpaceTheme.kt`.
 
 ## Aircraft & abilities
 
-3 data-driven ships in the Hangar, each with a hull silhouette, stats, a default weapon, and
+6 data-driven ships in the Hangar, each with a hull silhouette, stats, a default weapon, and
 one active special ability on a cooldown (tap the in-game ability button):
 
 | Aircraft | Style | Ability |
@@ -38,6 +39,9 @@ one active special ability on a cooldown (tap the in-game ability button):
 | Vanguard (free) | Balanced | **Overdrive** — temporary +60% damage, faster fire rate |
 | Nova (500 coins) | Glass-cannon interceptor | **Phase Dash** — instant reposition + i-frames |
 | Titan (1200 coins) | Fortress bomber | **Siege Burst** — damages everything on screen + shield refill |
+| Raptor (2000 coins) | Predatory strike interceptor | **Phase Dash** — short-cooldown dashes + wing cannons |
+| Vortex (2800 coins) | Storm-class assault fighter | **Overdrive** — tough hull, sustained overdrive bursts |
+| Colossus (4200 coins) | Siege-grade war fortress | **Siege Burst** — colossal armor, plasma + missiles + wing cannons |
 
 ## Meta-progression & audio
 

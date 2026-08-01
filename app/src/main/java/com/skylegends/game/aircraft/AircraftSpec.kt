@@ -84,6 +84,42 @@ object AircraftCatalog {
         statArmor = 1.0f, statSpeed = 0.35f, statFirepower = 0.9f
     )
 
-    val all = listOf(VANGUARD, NOVA, TITAN)
+    val RAPTOR = AircraftSpec(
+        id = "raptor", displayName = "RAPTOR", tagline = "Predatory strike interceptor", cost = 2000,
+        maxHp = 90f, followSpeed = 34f, maxShield = 55f, shape = HullShape.ARROW,
+        bodyColor = Color.rgb(255, 120, 80), wingColor = Color.rgb(150, 40, 30),
+        accentColor = Color.rgb(255, 235, 220), flameColor = Color.rgb(255, 170, 60),
+        defaultWeapon = WeaponCatalog.MACHINE_GUN, wingWeapon = WeaponCatalog.WING_CANNON,
+        abilityBlurb = "Ferocious speed and short-cooldown dashes",
+        ability = AbilityType.PHASE_DASH, abilityName = "PHASE DASH", abilitySymbol = "»",
+        abilityCooldown = 7f, abilityDuration = 0.7f,
+        statArmor = 0.4f, statSpeed = 0.95f, statFirepower = 0.75f
+    )
+
+    val VORTEX = AircraftSpec(
+        id = "vortex", displayName = "VORTEX", tagline = "Storm-class assault fighter", cost = 2800,
+        maxHp = 125f, followSpeed = 26f, maxShield = 80f, shape = HullShape.DELTA,
+        bodyColor = Color.rgb(80, 220, 235), wingColor = Color.rgb(30, 120, 150),
+        accentColor = Color.rgb(230, 252, 255), flameColor = Color.rgb(120, 235, 255),
+        defaultWeapon = WeaponCatalog.SPREAD, wingWeapon = WeaponCatalog.WING_CANNON,
+        abilityBlurb = "Tough hull, sustained overdrive bursts",
+        ability = AbilityType.OVERDRIVE, abilityName = "OVERDRIVE", abilitySymbol = "⚡",
+        abilityCooldown = 12f, abilityDuration = 5f,
+        statArmor = 0.7f, statSpeed = 0.7f, statFirepower = 0.85f
+    )
+
+    val COLOSSUS = AircraftSpec(
+        id = "colossus", displayName = "COLOSSUS", tagline = "Siege-grade war fortress", cost = 4200,
+        maxHp = 215f, followSpeed = 14f, maxShield = 120f, shape = HullShape.HEAVY,
+        bodyColor = Color.rgb(255, 205, 90), wingColor = Color.rgb(150, 110, 40),
+        accentColor = Color.rgb(255, 245, 210), flameColor = Color.rgb(255, 190, 70),
+        defaultWeapon = WeaponCatalog.PLASMA, wingWeapon = WeaponCatalog.WING_CANNON,
+        missileWeapon = WeaponCatalog.MISSILE_POD, abilityBlurb = "Colossal armor, screen-clearing siege",
+        ability = AbilityType.SIEGE_BURST, abilityName = "SIEGE BURST", abilitySymbol = "✦",
+        abilityCooldown = 16f, abilityDuration = 0f,
+        statArmor = 1.0f, statSpeed = 0.3f, statFirepower = 1.0f
+    )
+
+    val all = listOf(VANGUARD, NOVA, TITAN, RAPTOR, VORTEX, COLOSSUS)
     fun byId(id: String): AircraftSpec = all.firstOrNull { it.id == id } ?: VANGUARD
 }
