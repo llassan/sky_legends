@@ -48,8 +48,17 @@ class PowerUp(val kind: PowerUpKind) : Entity() {
         paint.color = kind.bg
         paint.alpha = 70
         canvas.drawCircle(pos.x, pos.y, r * 1.5f, paint)
-        // Capsule.
         paint.alpha = 255
+        val sprite = com.skylegends.game.fx.Sprites.forPowerUp(kind.name)
+        if (sprite != null) {
+            canvas.save()
+            canvas.translate(pos.x, pos.y)
+            canvas.rotate(bob * 8f)   // gentle wobble
+            com.skylegends.game.fx.Sprites.drawCentered(canvas, sprite, r * 2.1f)
+            canvas.restore()
+            return
+        }
+        // Capsule.
         canvas.drawCircle(pos.x, pos.y, r, paint)
         paint.color = Color.WHITE
         paint.alpha = 60

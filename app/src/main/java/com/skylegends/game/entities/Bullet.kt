@@ -56,6 +56,25 @@ class Bullet : Entity() {
         canvas.save()
         canvas.rotate(Math.toDegrees(angle.toDouble()).toFloat() + 90f, pos.x, pos.y)
 
+        val sprite = com.skylegends.game.fx.Sprites.forBullet(fromPlayer, glowColor)
+        if (sprite != null) {
+            // Soft halo in the laser's own hue (not the weapon's legacy colour).
+            val greenish = Color.green(glowColor) > Color.red(glowColor) && Color.green(glowColor) > Color.blue(glowColor)
+            paint.color = when {
+                !fromPlayer -> Color.rgb(255, 70, 60)
+                greenish -> Color.rgb(90, 255, 120)
+                else -> Color.rgb(80, 170, 255)
+            }
+            paint.alpha = 70
+            canvas.drawCircle(pos.x, pos.y, r * 2.2f, paint)
+            paint.alpha = 255
+            canvas.translate(pos.x, pos.y)
+            // Laser bolt scaled from the collision radius so heavier weapons read thicker.
+            com.skylegends.game.fx.Sprites.drawCentered(canvas, sprite, (r * 1.9f).coerceAtLeast(8f))
+            canvas.restore()
+            return
+        }
+
         // Outer glow.
         paint.color = glowColor
         paint.alpha = 90

@@ -1,0 +1,5 @@
+Big visual upgrade!
+• All-new ships, enemies and bosses
+• Painted space backdrops for every sector
+• Redesigned menus and in-flight HUD
+• Engine trails and score pop-ups on every kill

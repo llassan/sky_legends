@@ -140,6 +140,7 @@ class Background {
 
     /** Re-skin the whole backdrop for campaign sector [tier] (0-based). Called once per run start. */
     fun configure(tier: Int) {
+        painted = com.skylegends.game.fx.Sprites.background(tier)
         theme = SpaceThemeCatalog.forSector(tier)
         rnd = Random(20260701L.toInt() + tier * 7919)
         time = 0f
@@ -275,6 +276,8 @@ class Background {
 
     fun update(dt: Float) {
         time += dt
+        // The painted far layer drifts slowest of everything — it's the deep backdrop.
+        paintedScroll = (paintedScroll + dt * Constants.SCROLL_SPEED * 0.22f) % Constants.GAME_WIDTH
 
         for (n in nebulae) {
             n.y += n.speed * dt
@@ -378,10 +381,16 @@ class Background {
     }
 
     fun render(canvas: Canvas) {
-        canvas.drawRect(0f, 0f, Constants.GAME_WIDTH, Constants.GAME_HEIGHT, skyPaint)
-
-        renderGalaxies(canvas)
-        renderNebulae(canvas)
+        val bg = painted
+        if (bg != null) {
+            // Painted per-sector nebula (CC0, colour-graded) replaces the procedural gradient sky,
+            // galaxies and blob nebulae; the parallax stars/planets/dust/rocks still layer on top.
+            renderPainted(canvas, bg)
+        } else {
+            canvas.drawRect(0f, 0f, Constants.GAME_WIDTH, Constants.GAME_HEIGHT, skyPaint)
+            renderGalaxies(canvas)
+            renderNebulae(canvas)
+        }
         renderHorizonGlow(canvas)
         if (theme.starVisibility > 0.02f) renderStars(canvas)
         renderPlanets(canvas)
@@ -454,6 +463,22 @@ class Background {
         rayPaint.shader = null
         rayPaint.maskFilter = null
     }
+
+    /** Seamless square tile, GAME_WIDTH on a side, stacked vertically and scrolled downward. */
+    private fun renderPainted(canvas: Canvas, bg: android.graphics.Bitmap) {
+        val tile = Constants.GAME_WIDTH
+        var y = paintedScroll - tile
+        while (y < Constants.GAME_HEIGHT) {
+            paintedDst.set(0f, y, tile, y + tile + 1f)   // +1 px overlap hides seams from rounding
+            canvas.drawBitmap(bg, null, paintedDst, paintedPaint)
+            y += tile
+        }
+    }
+
+    private var painted: android.graphics.Bitmap? = null
+    private var paintedScroll = 0f
+    private val paintedDst = android.graphics.RectF()
+    private val paintedPaint = Paint(Paint.FILTER_BITMAP_FLAG)
 
     private fun renderHorizonGlow(canvas: Canvas) {
         val color = theme.horizonGlow ?: return
@@ -626,6 +651,16 @@ class Background {
             canvas.save()
             canvas.translate(rk.x, rk.y)
             canvas.rotate(rk.rotation)
+            // Stable per-rock variant from its random silhouette data.
+            val variant = (rk.jag[0] * 1000f).toInt() % 8
+            val meteor = com.skylegends.game.fx.Sprites.get(
+                (if (variant < 4) "meteorGrey_big" else "meteorBrown_big") + (variant % 4 + 1)
+            )
+            if (meteor != null) {
+                com.skylegends.game.fx.Sprites.drawCentered(canvas, meteor, rk.r * 2.4f)
+                canvas.restore()
+                continue
+            }
             rockPath.reset()
             val n = rk.jag.size
             for (i in 0 until n) {

@@ -9,6 +9,7 @@ import android.view.SurfaceView
 import com.skylegends.game.aircraft.AircraftCatalog
 import com.skylegends.game.audio.SoundManager
 import com.skylegends.game.effects.Background
+import com.skylegends.game.effects.FloatingTextSystem
 import com.skylegends.game.effects.ParticleSystem
 import com.skylegends.game.enemies.EnemyCatalog
 import com.skylegends.game.entities.AbilityContext
@@ -47,6 +48,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     // World.
     private val background = Background()
     private val particles = ParticleSystem()
+    private val floatingText = FloatingTextSystem()
     private val camera = com.skylegends.game.fx.Camera()
     private val player = Player()
     private val hud = Hud()
@@ -107,6 +109,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     }
 
     init {
+        com.skylegends.game.fx.Sprites.load(context)
         holder.addCallback(this)
         isFocusable = true
         sound.musicEnabled = save.musicOn
@@ -177,6 +180,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         enemies.clear(); powerups.clear()
         boss = null
         particles.clear()
+        floatingText.clear()
     }
 
     private fun startGame() {
@@ -245,18 +249,21 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         sound.updateMusicMix(dt, combatTarget, bossTarget)
 
         if (state == GameState.MENU) { menuTime += dt; player.update(dt); return }
-        if (state != GameState.PLAYING) { particles.update(dt); return }
+        if (state != GameState.PLAYING) { particles.update(dt); floatingText.update(dt); return }
 
         if (bossWarning > 0f) bossWarning -= dt
 
         // Hitstop freezes gameplay but not FX for that punchy impact beat.
         val frozen = camera.consumeHitstop(dt)
         particles.update(dt)
+        floatingText.update(dt)
         if (frozen) return
 
         // Player.
         if (player.alive) {
             player.update(dt)
+            // Living engine contrail streaming behind the ship (behind the drawn flame).
+            particles.engineTrail(player.pos.x, player.pos.y + Constants.PLAYER_HEIGHT * 0.5f, player.spec.flameColor)
             if (player.tryFire(playerSpawner)) {
                 particles.muzzleFlash(player.pos.x, player.pos.y - Constants.PLAYER_HEIGHT / 2f, player.weapon.muzzleColor)
                 sound.shoot()
@@ -437,7 +444,16 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         camera.addTrauma(0.18f * scale)
         if (scale > 1.4f) camera.addHitstop(0.04f)
         sound.explosion(big = scale > 1.4f)
-        score += (e.spec.score * multiplier).toInt()
+        val gained = (e.spec.score * multiplier).toInt()
+        score += gained
+        // Floating reward label — hotter colour + bigger as the combo multiplier climbs.
+        val txtColor = when {
+            multiplier >= 3f -> Color.rgb(255, 170, 60)
+            multiplier >= 2f -> Color.rgb(255, 225, 120)
+            else -> Color.rgb(228, 238, 255)
+        }
+        val txtSize = 20f + (multiplier - 1f).coerceAtMost(4f) * 3f
+        floatingText.spawn(e.pos.x, e.pos.y - e.spec.height * 0.35f, "+$gained", txtColor, txtSize)
         registerCombo()
         repeat(e.spec.coinValue) {
             val c = coinPool.obtain() ?: return@repeat
@@ -532,6 +548,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             // Large hero showcase of the selected ship — the menu is a hangar bay, not a
             // second copy of the gameplay view.
             canvas.save()
+            // Sit the showcase in the free band between the last menu button and the footer
+            // hint, instead of half-hidden behind UPGRADE LAB.
+            val showcaseY = (com.skylegends.game.ui.UiLayout.upgradeButton.bottom + Constants.GAME_HEIGHT - 60f) / 2f
+            canvas.translate(0f, showcaseY - player.pos.y)
             canvas.scale(1.7f, 1.7f, player.pos.x, player.pos.y)
             player.render(canvas)
             canvas.restore()
@@ -540,6 +560,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         }
         for (b in bullets) b.render(canvas)
         particles.render(canvas)
+        floatingText.render(canvas)
         canvas.restore()
 
         // HUD + overlays (not shaken).

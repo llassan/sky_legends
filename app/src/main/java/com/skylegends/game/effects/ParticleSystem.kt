@@ -36,6 +36,24 @@ class ParticleSystem {
         }
     }
 
+    /**
+     * Continuous engine exhaust — call each frame while the ship is under thrust. Emits a
+     * couple of short-lived glows that stream *down* (behind the upward-facing ship) and fade,
+     * giving the player a living contrail the static drawn flame can't. Cheap: ~2/frame, each
+     * ~0.3s, so only a few dozen are ever alive alongside combat FX.
+     */
+    fun engineTrail(x: Float, y: Float, color: Int) {
+        repeat(2) {
+            val dx = (Random.nextFloat() - 0.5f) * 7f
+            emit {
+                it.configure(
+                    ParticleKind.GLOW, x + dx, y, dx * 3f, 150f + Random.nextFloat() * 70f,
+                    0.26f + Random.nextFloat() * 0.12f, 4.5f + Random.nextFloat() * 3f, color, drag = 0.90f
+                )
+            }
+        }
+    }
+
     /** A single soft smoke wisp, left behind by missiles as they fly. */
     fun smokeTrail(x: Float, y: Float) {
         emit {

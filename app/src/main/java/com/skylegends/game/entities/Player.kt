@@ -231,7 +231,15 @@ class Player : Entity() {
 
         val h = Constants.PLAYER_HEIGHT
         renderFlame(canvas, h)
-        when (spec.shape) {
+        val sprite = com.skylegends.game.fx.Sprites.forAircraft(spec.id)
+        if (sprite != null) {
+            val widthScale = when (spec.shape) {
+                HullShape.DELTA -> 1.35f
+                HullShape.ARROW -> 1.30f
+                HullShape.HEAVY -> 1.55f
+            }
+            com.skylegends.game.fx.Sprites.drawCentered(canvas, sprite, Constants.PLAYER_WIDTH * widthScale)
+        } else when (spec.shape) {
             HullShape.DELTA -> renderDelta(canvas)
             HullShape.ARROW -> renderArrow(canvas)
             HullShape.HEAVY -> renderHeavy(canvas)

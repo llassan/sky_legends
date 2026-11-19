@@ -1,0 +1,2 @@
+Audiowide (Astigmatic) and Rajdhani (Indian Type Foundry), from Google Fonts (github.com/google/fonts).
+Licensed under the SIL Open Font License 1.1 — full texts in OFL-Audiowide.txt and OFL-Rajdhani.txt.

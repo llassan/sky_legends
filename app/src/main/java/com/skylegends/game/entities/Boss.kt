@@ -235,6 +235,8 @@ class Boss(private val spec: BossSpec) : Entity() {
         val w = 200f * spec.hullScale; val h = 150f * spec.hullScale
         val damage = 1f - (hp / maxHp).coerceIn(0f, 1f)
 
+        if (renderSpriteHull(canvas, w, damage)) { canvas.restore(); return }
+
         // Each boss keeps its OWN plating colour (so no two read alike), still shifting toward
         // rage-red as it takes damage.
         val hullBase = lerpColor(spec.hullColor, Color.rgb(200, 60, 60), damage * 0.5f)
@@ -302,6 +304,119 @@ class Boss(private val spec: BossSpec) : Entity() {
             paint.alpha = 255
         }
         canvas.restore()
+    }
+
+    /**
+     * Sprite-composite capital ship (Kenney CC0 parts), so bosses share the art style of the
+     * player and enemy ships. Each sector gets a hand-picked hull/wing/gun combo; sectors 9-16
+     * add an outer wing pair and a second gun battery so later bosses read as more heavily armed.
+     * Layout was prototyped offline. Returns false (-> vector fallback) if sprites are missing.
+     */
+    private fun renderSpriteHull(canvas: Canvas, w: Float, damage: Float): Boolean {
+        val index = spec.id.removePrefix("boss_").toIntOrNull() ?: 0
+        val look = BOSS_LOOKS[index.coerceIn(0, BOSS_LOOKS.size - 1)]
+        val hull = com.skylegends.game.fx.Sprites.get(look.hull) ?: return false
+        val wing = com.skylegends.game.fx.Sprites.get(look.wing) ?: return false
+        // Bosses are under near-constant fire, so a full-strength flash would bleach the hull
+        // white permanently; a light tint keeps its colours readable while still reacting.
+        val flash = hitFlash * 0.35f
+        val heavy = index >= 8
+
+        // Thruster glow behind the engine nozzles (drawn first so the hull sits on top).
+        val pulse = 0.7f + 0.3f * sin(age * 6f)
+        for (s in SIDES) {
+            val ex = s * w * 0.12f; val ey = -w * 0.34f
+            paint.shader = RadialGradient(ex, ey, w * 0.11f * pulse, Color.argb(220, 150, 205, 255), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+            canvas.drawCircle(ex, ey, w * 0.11f * pulse, paint)
+        }
+        paint.shader = null
+
+        for (s in SIDES) part(canvas, "engine1", s * w * 0.12f, -w * 0.27f, w * 0.12f, flash = flash)
+        // Wings: rotated to face down, mirrored per side, height capped so tall wing shapes fit.
+        val wingW = minOf(w * 0.28f, w * 0.5f * wing.width / wing.height)
+        for (s in SIDES) part(canvas, look.wing, s * w * 0.34f, -w * 0.02f, wingW, flip = s < 0, flash = flash)
+        if (heavy) {
+            for (s in SIDES) part(canvas, look.wing, s * w * 0.50f, w * 0.06f, wingW * 0.62f, flip = s < 0, flash = flash)
+            for (s in SIDES) part(canvas, look.gun, s * w * 0.48f, w * 0.22f, w * 0.08f, flash = flash)
+        }
+        for (s in SIDES) part(canvas, look.gun, s * w * 0.30f, w * 0.21f, w * 0.10f, flash = flash)
+
+        // Main hull (enemy sprites already face down — no rotation).
+        com.skylegends.game.fx.Sprites.drawCentered(canvas, hull, w * 0.60f, flash)
+
+        // Battle scars accumulate as HP drops.
+        if (damage > 0.33f) part(canvas, "scratch1", -w * 0.10f, w * 0.06f, w * 0.13f, rotate = false)
+        if (damage > 0.66f) {
+            part(canvas, "scratch2", w * 0.12f, -w * 0.05f, w * 0.13f, rotate = false)
+            part(canvas, "scratch3", -w * 0.02f, w * 0.16f, w * 0.10f, rotate = false)
+        }
+
+        // Reactor core = the weak point, seated in a turret ring; colour ramps with phase.
+        val coreY = -w * 0.02f
+        part(canvas, "turretBase_big", 0f, coreY, w * 0.20f, rotate = false, flash = flash)
+        val cp = 0.6f + 0.4f * sin(age * (3f + phase)).toFloat()
+        val coreColor = when (phase) {
+            1 -> spec.coreColor
+            2 -> Color.rgb(255, 200, 90)
+            else -> Color.rgb(255, 90, 90)
+        }
+        val k = w / 200f
+        paint.shader = RadialGradient(0f, coreY, (30f + 6f * cp) * k, coreColor, Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        paint.alpha = (180 + 75 * cp).toInt().coerceIn(0, 255)
+        canvas.drawCircle(0f, coreY, (30f + 6f * cp) * k, paint)
+        paint.alpha = 255
+        paint.shader = RadialGradient(0f, coreY, (15f + 3f * cp) * k, Color.WHITE, coreColor, Shader.TileMode.CLAMP)
+        canvas.drawCircle(0f, coreY, (15f + 3f * cp) * k, paint)
+        paint.shader = null
+
+        // Smoke from the damaged hull.
+        if (damage > 0.4f) {
+            paint.color = Color.rgb(40, 40, 45)
+            paint.alpha = 150
+            canvas.drawCircle(-w * 0.2f, -w * 0.12f, 16f + 6f * sin(age * 5f), paint)
+            if (damage > 0.7f) canvas.drawCircle(w * 0.18f, -w * 0.08f, 18f + 6f * sin(age * 4f + 1f), paint)
+            paint.alpha = 255
+        }
+        return true
+    }
+
+    /** Draws one boss part centred at (x, y); parts are authored facing up, so rotate 180°. */
+    private fun part(
+        canvas: Canvas, name: String, x: Float, y: Float, width: Float,
+        flip: Boolean = false, rotate: Boolean = true, flash: Float = 0f
+    ) {
+        val bmp = com.skylegends.game.fx.Sprites.get(name) ?: return
+        canvas.save()
+        canvas.translate(x, y)
+        if (rotate) canvas.rotate(180f)
+        if (flip) canvas.scale(-1f, 1f)
+        com.skylegends.game.fx.Sprites.drawCentered(canvas, bmp, width, flash)
+        canvas.restore()
+    }
+
+    private data class BossLook(val hull: String, val wing: String, val gun: String)
+
+    private companion object {
+        val SIDES = floatArrayOf(-1f, 1f)
+        /** One per sector (index = sector-1). 0-7 standard, 8-15 heavy (extra wings + guns). */
+        val BOSS_LOOKS = listOf(
+            BossLook("enemyBlack1", "wingBlue_2", "gun04"),   // Sentinel Mk-I
+            BossLook("enemyBlack4", "wingBlue_0", "gun02"),   // Iron Warden
+            BossLook("enemyBlue3", "wingBlue_7", "gun04"),    // Stormbringer
+            BossLook("enemyBlack2", "wingRed_6", "gun09"),    // Void Reaper
+            BossLook("enemyRed2", "wingRed_3", "gun09"),      // Crimson Judge
+            BossLook("enemyGreen4", "wingGreen_5", "gun02"),  // Apex Predator
+            BossLook("enemyBlue5", "wingBlue_1", "gun09"),    // Oblivion Ward
+            BossLook("enemyRed4", "wingRed_7", "gun04"),      // Dreadnought Prime
+            BossLook("enemyBlack3", "wingBlue_4", "gun09"),   // Moon Breaker
+            BossLook("enemyGreen2", "wingGreen_7", "gun09"),  // Grave Titan
+            BossLook("enemyBlack5", "wingYellow_6", "gun09"), // Solar Tyrant
+            BossLook("ufoYellow", "wingYellow_4", "gun04"),   // Ring Sovereign
+            BossLook("enemyRed3", "wingRed_1", "gun02"),      // Horizon Devourer
+            BossLook("enemyBlue1", "wingBlue_5", "gun09"),    // Quantum Specter
+            BossLook("enemyGreen3", "wingGreen_3", "gun04"),  // Hive Overmind
+            BossLook("enemyRed5", "wingYellow_2", "gun09")    // Galactic Emperor
+        )
     }
 
     /** Where each hull carries its glowing core, in local space. */

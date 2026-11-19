@@ -1,0 +1,3 @@
+Sector backgrounds derived from "Seamless Space Backgrounds" by Screaming Brain Studios
+(opengameart.org/content/seamless-space-backgrounds). License: CC0 1.0 (public domain).
+Colour-graded per sector for Sky Legends (regenerate with tools/grade_backgrounds.py).

@@ -167,6 +167,15 @@ class Enemy(val spec: EnemySpec) : Entity() {
         canvas.save()
         canvas.translate(pos.x, pos.y)
         val w = spec.width; val h = spec.height
+        val sprite = com.skylegends.game.fx.Sprites.forEnemy(spec.id)
+        if (sprite != null) {
+            // Saucer turret spins slowly; ships hold their heading.
+            if (spec.shape == EnemyShape.TURRET) canvas.rotate((age * 60f) % 360f)
+            com.skylegends.game.fx.Sprites.drawCentered(canvas, sprite, w * 1.15f, hitFlash)
+            canvas.restore()
+            renderHealthBar(canvas)
+            return
+        }
         when (spec.shape) {
             EnemyShape.DRONE -> renderDrone(canvas, w, h)
             EnemyShape.DART -> renderDart(canvas, w, h)
@@ -181,8 +190,11 @@ class Enemy(val spec: EnemySpec) : Entity() {
             paint.alpha = 255
         }
         canvas.restore()
+        renderHealthBar(canvas)
+    }
 
-        // Health bar for beefy enemies.
+    /** Health bar for beefy enemies. */
+    private fun renderHealthBar(canvas: Canvas) {
         if (spec.maxHp > 50f && hp < spec.maxHp) {
             val bw = spec.width
             val frac = (hp / spec.maxHp).coerceIn(0f, 1f)
